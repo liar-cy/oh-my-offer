@@ -1,14 +1,16 @@
 # Java集合
 
 - 题号前缀：JAVA-COL
-- 范围：HashMap 扩容过程是什么，扩容时如何处理并发读写？；HashMap 和 ConcurrentHashMap 有什么区别？
+- 范围：HashMap 整体工作原理；HashMap 扩容过程是什么，扩容时如何处理并发读写？；HashMap 和 ConcurrentHashMap 有什么区别？；HashSet 和 TreeSet 的底层实现与增删改查性能区别。
 - 最近更新：2026-09-24
 - 说明：按本库面经整理；补充练习不计入原始面试问题。个人经历答案为框架，技术版本以题内说明为准。
 
 ## 目录
 
+- [[#JAVA-COL-003：HashMap 整体是如何工作的？|JAVA-COL-003：HashMap 整体是如何工作的？]]
 - [[#JAVA-COL-001：HashMap 扩容过程是什么，扩容时如何处理并发读写？|JAVA-COL-001：HashMap 扩容过程是什么，扩容时如何处理并发读写？]]
 - [[#JAVA-COL-002：HashMap 和 ConcurrentHashMap 有什么区别？|JAVA-COL-002：HashMap 和 ConcurrentHashMap 有什么区别？]]
+- [[#JAVA-COL-004：HashSet 和 TreeSet 在底层实现与增删改查性能上有什么区别？|JAVA-COL-004：HashSet 和 TreeSet 在底层实现与增删改查性能上有什么区别？]]
 
 ### JAVA-COL-001：HashMap 扩容过程是什么，扩容时如何处理并发读写？
 
@@ -64,6 +66,7 @@
 
 - [[面经/百度/一面/0001#Q03：HashMap 如何扩容，扩容时的并发读写怎么处理？|MJ002 · 百度 · 一面 · Q03]]
 - [[面经/字节/一面/0001#Q18：HashMap 如何扩容并迁移旧数据？|MJ011 · 字节 · 一面 · Q18]]
+- [[面经/虾皮/一面/0002#Q09：谈谈 HashMap 的扩容机制。|MJ048 · 虾皮 · 一面 · Q09]]
 
 **参考资料**（本次查证：2026-09-12）
 
@@ -116,3 +119,121 @@
 
 - [Java SE 21，ConcurrentHashMap API](https://docs.oracle.com/en/java/javase/21/docs/api/java.base/java/util/concurrent/ConcurrentHashMap.html)
 - [OpenJDK 8u，ConcurrentHashMap 源码](https://github.com/openjdk/jdk8u/blob/master/jdk/src/share/classes/java/util/concurrent/ConcurrentHashMap.java)
+
+### JAVA-COL-003：HashMap 整体是如何工作的？
+
+**常见问法**
+
+- 介绍一下 HashMap。
+
+#### 面试回答
+
+以 JDK 8 为例，一句结构＋四条主线：
+
+- 结构：数组＋链表＋红黑树；数组是桶表，冲突挂在桶上。
+- 定位：key 的 hashCode 高 16 位异或低 16 位做扰动，再用 `(n-1) & hash` 取桶下标；容量恒为 2 的幂。
+- 冲突处理：同桶挂链表；链表长度到 8 且表容量到 64 才树化，红黑树退化到 6 变回链表。
+- 扩容：元素数超过容量×负载因子（默认 0.75）就翻倍，迁移细节见 JAVA-COL-001。
+- 特性：允许一个 null key；迭代无序；非线程安全，并发用 ConcurrentHashMap（见 JAVA-COL-002）。
+
+#### 技术细节
+
+**为什么容量必须是 2 的幂**
+
+- `hash & (n-1)` 等价于取模但只是位运算；且扩容翻倍时，元素新位置只由“新启用的那一位”决定，一个 `hash & oldCap` 就能判留原位还是移到“原位＋oldCap”。
+- 扰动（`h ^ h>>>16`）是让高位信息参与低位掩码，减少“ hashCode 只差高位”时的聚集冲突。
+
+**put 的完整分支**
+
+- 表未初始化：先按默认容量 16（或指定容量）建表。
+- 桶为空：直接放新节点。
+- 桶已有：先比哈希再 equals，命中就覆盖 value；未命中挂链或进树。
+- 挂链后判断树化条件（见上），最后 `++size > threshold` 触发扩容。
+
+**取值与键的约定**
+
+- get 与 put 是同一套“先哈希定位、再 equals 确认”，所以 equals／hashCode 契约破坏后取不中（见 JAVA-012）。
+- null key 固定放在下标 0 的桶；“HashMap 支持 null”说的是 value 也可以 null，判断“键不存在”和“值为 null”要用 `containsKey` 区分。
+
+**构造参数怎么给**
+
+- 已知条目数 n：初始容量约 `n/0.75 + 1`，避免中途扩容；实现里会取不小于该值、2 的幂的结果（`tableSizeFor` 语义）。
+- 负载因子调大省内存换更长链；调小反之。默认 0.75 是空间时间的折中，面试不必现场改。
+
+**版本差异**
+
+- JDK 7：数组＋链表，头插法；并发扩容可能成环（get 死循环），是历史事故不是现行行为。
+- JDK 8 起：尾插＋树化；新增 `computeIfAbsent`／`merge` 等计算接口（仍非线程安全前提下的多步原子保证）。
+
+#### 深挖追问
+
+1. **树化阈值为什么是 8，退化为什么是 6？**（补充练习）
+
+   官方注释的口径：随机哈希下链长达 8 的概率约千万分之六（泊松分布），树化是给“哈希质量差到极端”兜底，把最坏 O(n) 变 O(log n)。退化用 6 是与 8 留出间隙，避免在临界点反复转换。
+
+2. **HashMap 的迭代顺序稳定吗？**（补充练习）
+
+   不稳定。它不是“随机”，而是由哈希和容量决定：同样内容、同样容量、同样插入序列结果可复现，但不反映插入顺序；扩容后顺序会变。要顺序用 LinkedHashMap。
+
+3. **为什么 key 常用 String 而不是自定义可变对象？**（补充练习）
+
+   String 不可变，hashCode 缓存且稳定；可变对象参与哈希的字段一旦修改就定位失效。自定义 key 要么保证字段不可变，要么别改。
+
+**面经来源**
+
+- [[面经/微步在线/一面/0001#Q02：介绍一下 HashMap。|MJ043 · 微步在线 · 一面 · Q02]]
+
+**参考资料**（本次查证：2026-09-24；适用 JDK 8 及之后的实现）
+
+- [OpenJDK 8u HashMap 源码](https://github.com/openjdk/jdk8u/blob/master/jdk/src/share/classes/java/util/HashMap.java)
+- [Java SE 17 HashMap API](https://docs.oracle.com/en/java/javase/17/docs/api/java.base/java/util/HashMap.html)
+
+### JAVA-COL-004：HashSet 和 TreeSet 在底层实现与增删改查性能上有什么区别？
+
+**常见问法**
+
+- Java 中的 HashSet 和 TreeSet 在底层实现以及性能方面有哪些区别？性能上可以说一下增删改查的复杂度。
+
+#### 面试回答
+
+一句话：HashSet 是“哈希换 O(1) 且无序”，TreeSet 是“红黑树换有序和 O(log n)”。
+
+- HashSet：底层就是 HashMap——元素当 key，value 是共享哑值；add／remove／contains 平均 O(1)，冲突成链退化 O(n)、树化后 O(log n)；遍历顺序与插入无关；允许一个 null 元素。
+- TreeSet：底层 TreeMap，元素当 key，红黑树按 Comparable／Comparator 排序；add／remove／contains 稳定 O(log n)，还白送有序遍历与范围操作（first／higher／subSet）；不接受 null（比较即 NPE），去重依据是 `compareTo==0` 而非 equals。
+- 选型：只要去重与判存在 → HashSet；要有序遍历、极值、区间查询 → TreeSet，为 log n 与每元素树节点开销付费。
+- 中间档补一句：LinkedHashSet＝哈希＋双向链表，O(1) 且保插入序——“要不要序、要哪种序”才是第一问。
+
+#### 技术细节
+
+**去重语义的暗坑**
+
+- TreeSet 用比较结果当“相等”：`compareTo` 与 `equals` 不一致时，会出现“equals 不同的两个对象被当成重复丢掉”——比较器要么与 equals 一致，要么明确接受这个语义（Effective Java 的 SortedSet 警告）。
+- HashSet 相反：先 hashCode 分桶再 equals 确认——所以元素类的 equals／hashCode 契约必须一起重写（见 JAVA-012）。
+
+**“增删改查”措辞在 Set 上的对应**
+
+- Set 没有“改”：改元素＝remove＋add；改到一半失败会丢元素，稳妥写法是新建集合替换引用。
+- add 返回 boolean（是否真的加入）是两套都成立的行为契约，可用于“去重计数”式判重。
+
+**复杂度要说前提**
+
+- HashSet 的 O(1) 是“哈希均匀”前提下的平均情况，最坏 O(n)；TreeSet 的 O(log n) 是最坏情况保证。答“一个快一个慢”不分场景，会被追问打回。
+
+#### 深挖追问
+
+1. **TreeMap 的红黑树比 AVL 慢在哪，为什么还选红黑树？**（补充练习）
+
+   单次查找 AVL 略快（更平衡、树更矮），但插入删除的旋转次数更少更便宜——红黑树用“近似平衡换写放大小”，匹配通用容器读写混多的画像。JDK 早期 TreeMap 真用过 AVL，后改红黑树是公开历史。
+
+2. **ConcurrentSkipListSet 呢？**（补充练习）
+
+   并发场景的“有序 Set”没有并发红黑树，用跳表实现（并发读写、O(log n) 无锁化）——与 ConcurrentHashMap 不同族，量大时注意其 size 非 O(1)。
+
+**面经来源**
+
+- [[面经/帆软/一面/0004#Q19：HashSet 和 TreeSet 在底层实现以及增删改查性能上有哪些区别？|MJ050 · 帆软 · 一面 · Q19]]
+
+**参考资料**（本次查证：2026-09-24）
+
+- [Java SE 17 HashSet／TreeSet API](https://docs.oracle.com/en/java/javase/17/docs/api/java.base/java/util/TreeSet.html)
+- [OpenJDK 17u TreeSet 源码（TreeMap 包装）](https://raw.githubusercontent.com/openjdk/jdk17u/master/src/java.base/share/classes/java/util/TreeSet.java)

@@ -1,12 +1,13 @@
 # Spring
 
 - 题号前缀：SPRING
-- 范围：Spring Boot 自动装配的原理是什么？；IoC 是什么，容器如何创建和管理 Bean？；AOP 的原理是什么，为什么自调用可能失效？；@Transactional 何时不生效，如何正确调用事务方法？；@Resource 与 @Autowired 有什么区别，如何按名称注入？；Spring 如何处理循环依赖，如何解决？；什么是懒加载，@Lazy 在哪里生效？；@Transactional 方法里新开线程是否还在同一事务；常用注解及其处理者；@Autowired 的注入流程与反射实现；Bean 的完整生命周期。
+- 范围：Spring Boot 有哪些关键特性；Spring Boot 自动装配的原理是什么？；IoC 是什么，容器如何创建和管理 Bean？；AOP 的原理是什么，为什么自调用可能失效？；@Transactional 何时不生效，如何正确调用事务方法？；@Resource 与 @Autowired 有什么区别，如何按名称注入？；Spring 如何处理循环依赖，如何解决？；什么是懒加载，@Lazy 在哪里生效？；@Transactional 方法里新开线程是否还在同一事务；常用注解及其处理者；@Autowired 的注入流程与反射实现；Bean 的完整生命周期。
 - 最近更新：2026-09-24
 - 说明：按本库面经整理；补充练习不计入原始面试问题。个人经历答案为框架，技术版本以题内说明为准。
 
 ## 目录
 
+- [[#SPRING-012：Spring Boot 有哪些关键特性？|SPRING-012：Spring Boot 有哪些关键特性？]]
 - [[#SPRING-001：Spring Boot 自动装配的原理是什么？|SPRING-001：Spring Boot 自动装配的原理是什么？]]
 - [[#SPRING-002：IoC 是什么，容器如何创建和管理 Bean？|SPRING-002：IoC 是什么，容器如何创建和管理 Bean？]]
 - [[#SPRING-003：AOP 的原理是什么，为什么自调用可能失效？|SPRING-003：AOP 的原理是什么，为什么自调用可能失效？]]
@@ -65,6 +66,8 @@
 **面经来源**
 
 - [[面经/用友/一面/0001#Q07：Spring Boot 自动装配的原理是什么？|MJ001 · 用友 · 一面 · Q07]]
+- [[面经/微步在线/一面/0001#Q12：谈谈 SpringBoot 的自动装配原理。|MJ043 · 微步在线 · 一面 · Q12]]
+- [[面经/虾皮/一面/0002#Q13：谈谈 SpringBoot 的启动过程。|MJ048 · 虾皮 · 一面 · Q13]]
 
 **参考资料**（本次查证：2026-09-19）
 
@@ -194,6 +197,7 @@ Spring AOP 的做法是在目标对象外面套一层代理，把事务、日志
 - [[面经/百度/一面/0006#Q15：AOP 是什么，底层原理是什么？|MJ010 · 百度 · 一面 · Q15]]
 
 - [[面经/北京某上市公司/一面/0001#Q09：动态代理有哪几种？|MJ004 · 北京某上市公司 · 一面 · Q09]]
+- [[面经/虾皮/一面/0002#Q08：谈谈对 Spring 中 JDK 动态代理的理解。|MJ048 · 虾皮 · 一面 · Q08]]
 - [[面经/用友/一面/0001#Q08：IoC 和 AOP 是什么，具体原理是什么？|MJ001 · 用友 · 一面 · Q08]]
 
 **参考资料**（本次查证：2026-09-12）
@@ -717,7 +721,63 @@ Spring 的懒加载，就是把 Bean 的创建从“容器启动时”推迟到�
 **面经来源**
 
 - [[面经/小红书/一面/0001#Q04：请讲一下 Spring 中一个 Bean 的生命周期。|MJ040 · 小红书 · 一面 · Q04]]
+- [[面经/虾皮/一面/0002#Q13：谈谈 SpringBoot 的启动过程。|MJ048 · 虾皮 · 一面 · Q13]]
 
 **参考资料**（查证：2026-09-23）
 
 - [Spring Framework Reference：Container lifecycle／Bean 生命周期回调](https://docs.spring.io/spring-framework/reference/core/beans/factory-nature.html)
+
+### SPRING-012：Spring Boot 有哪些关键特性？
+
+**常见问法**
+
+- 谈谈 SpringBoot 有哪些关键的特性？
+
+#### 面试回答
+
+按“各解决什么问题”报主特性，不背形容词：
+
+- 自动装配：starter 带依赖，`@EnableAutoConfiguration` 按条件自动注册默认配置——解决“Spring 配置量大、上手慢”（原理见 SPRING-001）。
+- 起步依赖与版本仲裁：`spring-boot-starter-parent` 统一管理传递依赖版本——解决“两个库各带一个 Jackson”的冲突地狱。
+- 内嵌容器：Tomcat／Jetty／Undertow 打进可执行 jar，`java -jar` 就跑——解决“打 war、装容器、对齐版本”的部署重活。
+- 约定优于配置：默认值覆盖大多数场景，`application.yml` 只写例外；改环境靠 profile。
+- 生产就绪：Actuator 提供健康检查、指标、信息端点，天然对接监控与编排探针。
+
+收尾一句：这些合起来把“从脚手架到上线”的路径标准化了，微服务才可能批量生产。
+
+#### 技术细节
+
+**每个特性和老流程的对照**
+
+- 自动装配对比的是以前手抄一堆 `@Bean` 配置／XML；starter 聚合的是 dependencyManagement 里的版本对齐。
+- 内嵌容器改变部署形态：应用自己监听端口，水平扩容就是多起进程；war 外置容器的共享部署方式基本不再用。
+- 约定不排斥定制：AutoConfiguration 全部可覆盖（自己定义同类 Bean 即退让，见 SPRING-001），profile 解决多环境差异。
+
+**易混点**
+
+- starter ≠ 自动配置类：starter 常见作用只是“聚合一组依赖＋一份配置约定”，真正干活的是它带进来的 autoconfigure 包（Boot 官方模块常常成对：`xxx-spring-boot-starter` 与 `xxx-spring-boot-autoconfigure`）。
+- Actuator 端点默认暴露要收敛（health／info 之外按需开，走安全层），这是面试提一嘴能加分的工程点。
+
+**版本口径**
+
+- Boot 3.x 基线 JDK 17、命名空间 `jakarta.*`；谈特性遇到细节差异（如 imports 文件替代 spring.factories）以所用版本文档为准。
+
+#### 深挖追问
+
+1. **不用 Spring 能做出这些效果吗？Boot 是不是黑魔法？**（补充练习）
+
+   都不是魔法：自动装配本质是“读清单＋条件判断＋注册 Bean”，还是 IoC 容器那一套（SPRING-002）。Boot 只是把重复劳动模板化；理解模板背后的机制，排查问题时才出得去模板。
+
+2. **Boot 应用启动时容器里发生了什么？**（面经实际出现；[[面经/虾皮/一面/0002#Q13：谈谈 SpringBoot 的启动过程。|MJ048 · 虾皮 · 一面 · Q13]]）
+
+   `SpringApplication.run` 主干：推断应用类型与加载初始化器／监听器 → 准备 Environment（配置文件与 profile）→ 创建并 refresh 容器（BeanFactoryPostProcessor 含自动配置评估、注册 BeanPostProcessor、实例化单例）→ 内嵌容器随刷新启动监听端口 → Runner 回调 → 发布 `ApplicationReadyEvent`。全程事件贯穿，失败路径发 Failed 事件；单例实例化细节见 SPRING-011，逐条展开版另见 [[面经/虾皮/一面/0002#Q13：谈谈 SpringBoot 的启动过程。|MJ048 一面 Q13]] 的面试回答。
+
+**面经来源**
+
+- [[面经/拼多多/一面/0002#Q12：谈谈 SpringBoot 有哪些关键特性。|MJ044 · 拼多多 · 一面 · Q12]]
+- [[面经/虾皮/一面/0002#Q13：谈谈 SpringBoot 的启动过程。|MJ048 · 虾皮 · 一面 · Q13]]
+
+**参考资料**（本次查证：2026-09-24）
+
+- [Spring Boot Overview（官方文档：features／starters／Actuator）](https://docs.spring.io/spring-boot/reference/)
+- [Spring Boot 自动配置](https://docs.spring.io/spring-boot/reference/using/auto-configuration.html)
