@@ -1,7 +1,7 @@
 # Redis
 
 - 题号前缀：REDIS
-- 范围：Redis 数据类型、内部编码与场景、性能来源；缓存穿透、击穿与雪崩；RDB 与 AOF；限流；过期删除与内存淘汰；分布式锁与 Redisson；big value 与大对象处理；热 Key 探测与分摊。
+- 范围：Redis 数据类型、内部编码与场景、性能来源；缓存穿透、击穿与雪崩；RDB 与 AOF；限流；过期删除与内存淘汰；分布式锁与 Redisson；big value 与大对象处理；热 Key 探测与分摊；部署模式（单实例／主从／哨兵／Cluster）与选型。
 - 最近更新：2026-09-24
 - 说明：按本库面经整理；补充练习不计入原始面试问题。个人经历答案为框架，技术版本以题内说明为准。
 
@@ -20,6 +20,7 @@
 - [[#REDIS-008：Redisson 解决了什么问题，底层是怎么实现的？|REDIS-008：Redisson 解决了什么问题，底层是怎么实现的？]]
 - [[#REDIS-009：需要缓存的数据特别大（big value）怎么办？|REDIS-009：需要缓存的数据特别大（big value）怎么办？]]
 - [[#REDIS-010：什么是热 Key，为什么危险，如何探测与解决？|REDIS-010：什么是热 Key，为什么危险，如何探测与解决？]]
+- [[#REDIS-011：Redis 有哪些部署模式，单实例／主从／哨兵／Cluster 怎么选？|REDIS-011：Redis 有哪些部署模式，单实例／主从／哨兵／Cluster 怎么选？]]
 
 ### REDIS-001：Redis 有哪些数据类型，分别用于哪些场景？
 
@@ -913,3 +914,66 @@ Redisson 做的事是把锁、读写锁、信号量、闭锁、限流器这类�
 
 - [Redis 官方文档：Scale with Redis Cluster（槽分片与倾斜）](https://redis.io/docs/latest/operate/oss_and_stack/management/scaling/)
 - [Redis 官方文档：Optimization 与 big key 治理入口（`--bigkeys`／`--hotkeys` 等工具的行为与限制以部署版本文档为准）](https://redis.io/docs/latest/operate/oss_and_stack/management/optimization/)
+
+### REDIS-011：Redis 有哪些部署模式，单实例／主从／哨兵／Cluster 怎么选？
+
+**常见问法**
+
+- 服务里 Redis 是怎么部署的？单实例、主从、哨兵还是集群？
+- 哨兵和 Cluster 有什么区别，什么时候用哪个？
+
+#### 面试回答
+
+按“可用性”和“容量／并发”两条线递进，报清自己用的那档和为什么：
+
+- 单实例：一台，最简，无高可用，宕机即不可用，通常只在本地开发用。
+- 主从（Replication）：一主多从，读写分离＋数据冗余；但故障切换要人工，写仍是单点，数据量不受扩展。
+- 哨兵（Sentinel）：在主从之上部署哨兵集群，自动做监控、故障发现和主从切换（自动 failover），解决“高可用”；仍是单写入点、不能水平扩数据。
+- 集群（Cluster）：多主多从，数据按 16384 个哈希槽分片，读写都能水平扩展、每个分片还能再挂从做高可用，解决“数据量大＋高并发”。
+
+选型一句话：要高可用但数据不大→哨兵；数据量大、并发高→Cluster；生产环境基本不用裸单实例。
+
+#### 技术细节
+
+**主从：复制的是数据不是调度**
+
+- 从节点全量（首次 RDB＋增量 backlog）同步主节点；读写分离能把读压力分摊到从，但要接受主从延迟导致的读到旧值。
+- 主挂了不会自动切，运维手动 `REPLICAOF NO ONE` 提升——这是它和高可用的关键差距。
+
+**哨兵解决的是“自动切换”**
+
+- 主观下线（单个哨兵认为挂了）→ 客观下线（达到 `quorum` 个哨兵都这么认为）→ 哨兵间选举一个 leader 执行 failover，挑一个从提升为新主并让其它从跟随。
+- 哨兵本身要奇数个、且 ≥3，分布在不同的物理机／可用区，避免单机全挂或票数相等。
+- 客户端不直连 Redis，而是先问哨兵拿当前主地址。
+
+**Cluster 解决的是“扩展＋分片高可用”**
+
+- key 用 `CRC16(key) mod 16384` 映射到槽，槽分配给各主节点；扩容时迁移槽即可。
+- 访问到非本节点持有的 key，返回 `MOVED`／`ASK` 重定向，客户端要能处理。
+- 每个分片各自一主多从，主挂由该分片的从自动升主——把“哨兵的自动切换”做进了每个分片。
+- 限制：跨槽的多 key 操作（如 `MGET`、事务）要用 hash tag `{}` 强制同槽。
+
+**容易说错的点**
+
+- 别说“Cluster 一定比哨兵好”：小数据量、强一致跨 key 操作多的场景，Cluster 的多 key 限制反而是负担，哨兵更合适。
+- 哨兵不做数据分片，它管的仍是“一主多从”，别把它当成扩容方案。
+
+#### 深挖追问
+
+1. **主从复制和哨兵能一起用吗？**（面经实际出现的延伸）
+
+   能——哨兵本来就设计在主从集群上：平时靠主从做读写分离和冗余，哨兵只在主故障时介入自动切换。二者是“数据复制”和“高可用调度”两层，不冲突。
+
+2. **Cluster 下怎么做分布式锁？**（补充练习）
+
+   单实例锁语义在 Cluster 上不天然成立（锁可能因主从切换丢失）。要更强保证用 Redlock（多独立节点过半加锁成功），但它也有争议；能不用跨分片锁就不用，详见 REDIS-006。
+
+**面经来源**
+
+- [[面经/小红书/一面/0002#Q05：Redis 了解哪些？服务里 Redis 怎么部署——单实例、集群还是哨兵？|MJ054 · 小红书 · 一面 · Q05]]
+
+**参考资料**（本次查证：2026-09-24）
+
+- [Redis 官方文档：Replication（主从）](https://redis.io/docs/latest/operate/oss_and_stack/management/replication/)
+- [Redis 官方文档：Sentinel](https://redis.io/docs/latest/operate/oss_and_stack/management/sentinel/)
+- [Redis 官方文档：Redis Cluster](https://redis.io/docs/latest/operate/oss_and_stack/management/scaling/)
