@@ -9,6 +9,7 @@
 
 - [[#SPRING-012：Spring Boot 有哪些关键特性？|SPRING-012：Spring Boot 有哪些关键特性？]]
 - [[#SPRING-013：基于 Spring Boot 开发会用到哪些工具？|SPRING-013：基于 Spring Boot 开发会用到哪些工具？]]
+- [[#SPRING-014：Spring Session 中存储的是什么数据？|SPRING-014：Spring Session 存储内容与工作机制]]
 - [[#SPRING-001：Spring Boot 自动装配的原理是什么？|SPRING-001：Spring Boot 自动装配的原理是什么？]]
 - [[#SPRING-002：IoC 是什么，容器如何创建和管理 Bean？|SPRING-002：IoC 是什么，容器如何创建和管理 Bean？]]
 - [[#SPRING-003：AOP 的原理是什么，为什么自调用可能失效？|SPRING-003：AOP 的原理是什么，为什么自调用可能失效？]]
@@ -860,3 +861,58 @@ Spring 的懒加载，就是把 Bean 的创建从“容器启动时”推迟到�
 - [MyBatis Generator 文档](https://mybatis.org/generator/)
 - [Alibaba Arthas 项目主页](https://github.com/alibaba/arthas)
 - [Apache JMeter 官网](https://jmeter.apache.org/)
+
+### SPRING-014：Spring Session 中存储的是什么数据？
+
+**常见问法**
+
+- [[面经/收钱吧/一面/0001#Q07：Spring Session 中存储的是什么数据？|MJ068 · 收钱吧 · 一面 · Q07]]
+- 用 Spring Session 后，Redis 里那个 session key 存的是什么？
+
+#### 面试回答
+
+结论：存的是服务端会话状态——Session 元数据＋attribute 键值对；客户端 Cookie 里只有会话 ID，对象本体都在共享存储。
+
+- 元数据：session id、creationTime、lastAccessedTime、maxInactiveInterval（空闲超时秒数）、principalName（配合 Spring Security 存的登录用户标识，用于按用户查会话）。
+- attribute：`session.setAttribute` 写入的业务对象——典型是登录用户信息、【购物车／向导步骤】等跨请求状态。
+- 定位机制：`SessionRepositoryFilter` 包住请求，从 Cookie（默认名 `SESSION`）／Header／URL 取 id，去 `SessionRepository` 换回 Session，响应完成时写回。
+- 用 Redis 存储时 attribute 要序列化（Jackson／JDK），所以属性必须可序列化、体积要控制——Session 是每请求热点，不是数据仓库。
+
+#### 技术细节
+
+**Redis 里的形态**
+
+- `RedisIndexedSessionRepository`：一个 session 主 hash（`spring:session:sessions:{id}`，存元数据与 attributeEntries）＋ 几个索引 set／key（`sessions:expires`、`expirations`），支撑按 principal 查询与会话失效事件。
+- 过期处理：依赖 Redis key 过期通知＋定期清理双路；maxInactiveInterval 换算成 TTL，续期靠最后访问时间刷新。
+
+**与容器 Session 的关系**
+
+- Spring Session 替换的是 `HttpSession` 的存储与生命周期管理，Tomcat 内存那份不再使用；因此多实例天然共享登录态、单实例重启不丢会话。
+- Cookie 属性（HttpOnly／Secure／SameSite）仍要按安全要求配——存储搬了，凭证暴露面没变（Cookie／Session／Token 区分见 NET-012）。
+
+**放什么不该放什么**
+
+- 适合：小的、稳定的、每请求都要的标识类数据（用户 ID、权限快照版本号）。
+- 不适合：大对象（完整用户档案、列表缓存）——序列化开销＋网络传输让每个请求都变慢；放共享缓存按 key 取。
+
+#### 深挖追问
+
+1. **为什么登录态迁移到 Spring Session 后要做序列化改造？**（面经实际出现的延伸；[[面经/收钱吧/一面/0001#Q08：序列化的作用、二进制与 JSON 序列化的差异、发生在网络的哪一层|MJ068 · 收钱吧 · 一面 · Q08]]）
+
+   容器 Session 同进程放对象引用就行；外置存储必须把对象编码成字节。类结构变更（加字段、改类名）会造成旧 Session 反序列化失败、用户被登出，所以 attribute 类型要有版本兼容策略或放扁平的 Map／DTO。
+
+2. **principalName 有什么用？**（补充练习）
+
+   Spring Security 把认证信息放进 Session 时，Spring Session 同步记录 principalName，支持“查某用户的全部会话”——改密后强制下线、单点踢人这类需求靠它。
+
+**面经来源**
+
+- [[面经/收钱吧/一面/0001#Q07：Spring Session 中存储的是什么数据？|MJ068 · 收钱吧 · 一面 · Q07]]
+
+**参考资料**（查证日期：2026-09-25；适用 Spring Session 文档）
+
+- [Spring Session Reference（SessionRepository、Redis 存储、Cookie/Header、过期机制）](https://docs.spring.io/spring-session/reference/)
+
+**相关题目**
+
+[[专题题库/计算机网络#NET-012：Cookie、Session 和 Token 有什么区别？|NET-012：会话三件套]]、[[专题题库/Java基础#JAVA-020：二进制序列化和 JSON 序列化有什么差异？各自适配什么场景？|JAVA-020：序列化选型]]

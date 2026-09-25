@@ -38,6 +38,7 @@
 - [[#JUC-020：如何写一个限制最大并发数的并发任务处理器？|JUC-020：如何写一个限制最大并发数的并发任务处理器？]]
 - [[#JUC-021：CopyOnWriteArrayList 是怎么保证线程安全的？为什么没有 CopyOnWriteLinkedList？|JUC-021：CopyOnWriteArrayList 是怎么保证线程安全的？为什么没有 CopyOnWriteLinkedList？]]
 - [[#JUC-022：CountDownLatch 解决什么问题，和 CyclicBarrier、Semaphore 怎么区分？|JUC-022：CountDownLatch 解决什么问题，和 CyclicBarrier、Semaphore 怎么区分？]]
+- [[#JUC-023：分段锁＋编程式事务怎么配合实现（库存分桶案例）？|JUC-023：分段锁与编程式事务的配合实现]]
 
 ### JUC-001：ThreadLocal 是什么，有什么问题？
 
@@ -259,6 +260,7 @@ ThreadLocal 是给每个线程各自存一份变量值，用来放线程内的�
 - [[面经/帆软/二面/0002#Q09：线程池有哪些核心参数，如何设计让高优先级任务先执行？|MJ035 · 帆软 · 二面 · Q09]]
 - [[面经/美团/一面/0003#Q05：为什么要有线程池？怎么创建线程池，拒绝策略有哪些？|MJ037 · 美团 · 一面 · Q05]]
 - [[面经/微步在线/一面/0001#Q11：线程池有哪些核心参数？能否不入队、先把线程跑满再入队？|MJ043 · 微步在线 · 一面 · Q11]]
+- [[面经/收钱吧/一面/0001#Q16：线程池有哪些核心参数？每个参数的作用？|MJ068 · 收钱吧 · 一面 · Q16]]
 - [[面经/钉钉/电话面/0001#Q10：谈谈对 Java 多线程／高并发的认识，以及如何创建、使用、什么场景用？|MJ053 · 钉钉 · 电话面 · Q10]]
 
 **参考资料**（本次查证：2026-09-12）
@@ -1688,3 +1690,64 @@ void inc() {
 
 - [Java SE 17 CountDownLatch API](https://docs.oracle.com/en/java/javase/17/docs/api/java.base/java/util/concurrent/CountDownLatch.html)
 - [OpenJDK 17u AbstractQueuedSynchronizer 源码（共享获取与释放）](https://raw.githubusercontent.com/openjdk/jdk17u/master/src/java.base/share/classes/java/util/concurrent/locks/AbstractQueuedSynchronizer.java)
+
+### JUC-023：分段锁＋编程式事务怎么配合实现（库存分桶案例）？
+
+**常见问法**
+
+- [[面经/收钱吧/一面/0001#Q09：项目中分段锁＋编程式事务是如何实现的？|MJ068 · 收钱吧 · 一面 · Q09]]
+- 一个大库存行并发扣减太慢，怎么拆？
+
+#### 面试回答
+
+结论：两件事各管一段——分段锁把“一行争用”拆成“N 行争用”，编程式事务把锁持有时间压到“一次 DB 更新”以内；配合起来治热点行更新。
+
+- 分段：把总库存拆成 N 个桶行（`stock_bucket_0..N-1`），请求先选一个有余量的桶，再在该桶上做扣减；任一时刻争用的是桶行锁，不是全局一行。
+- 编程式事务：用 `TransactionTemplate.execute(...)` 只包住“条件扣减桶库存＋写流水”两条 SQL；事务边界在代码里看得见，不会被 `@Transactional` 圈进 RPC／发 MQ。
+- 竞态处理：“选桶”和“扣减”之间桶可能被抢空，所以扣减必须 `update ... set stock=stock-? where id=? and stock>=?`，影响行数 0 就换桶重试——内存计数只做提示，不做裁决。
+- 收尾：这套组合把单行吞吐放大近 N 倍，代价是“查真实余量”要 SUM 多桶，对账与回补逻辑按桶写。
+
+#### 技术细节
+
+**TransactionTemplate 的几条纪律**
+
+- 回滚语义：execute 回调里抛 RuntimeException 自动回滚；受检异常要么包成 Runtime，要么显式 `status.setRollbackOnly()`——这是编程式事务最常见的“以为会滚其实没滚”。
+- 传播行为可在模板上设（`PROPAGATION_REQUIRES_NEW` 单独开一层），用它把“流水必落库、主流程可回滚”这类需求表达出来，比拆 Bean 自调用干净。
+- `timeout` 只对事务生效，别忘了它；大事务的第一刀就是“出事务的调用全部挪走”。
+
+**为什么事务要短**
+
+- 事务时长≈行锁持有时间：事务里夹一个 300ms 的 RPC，等于让该桶所有并发排队 300ms。
+- 分段锁解决“争用面”，短事务解决“争用时”；只做其一都不够。
+
+**与 ConcurrentHashMap 的“分段锁”别混**
+
+- JDK 7 的 CHM 用 Segment（继承 ReentrantLock）分段锁表数组；JDK 8 起改为 CAS＋桶头节点 synchronized（见 JAVA-COL-002）。
+- 面试如果问的是集合实现，答上面那句即可；业务“分段锁”是行分片思想，两者同源不同物。
+
+**边界与代价**
+
+- 桶间不均：按 hash 固定路由会让热商品集中一桶，可用“随机起点轮询找桶”或定时再平衡（桶间搬运）。
+- 回补要按桶回：退款／取消归还库存时回到原桶，别让空桶恒空。
+
+#### 深挖追问
+
+1. **能不能不用分段，直接乐观锁重试？**（补充练习）
+
+   低争用时 version 乐观锁更简单；热点行下冲突率高，重试风暴比锁等待更贵——分段把冲突面打散后再配条件更新是常见终态。
+
+2. **N 取多少？**（补充练习）
+
+   按“单行可承受 TPS × N ≥ 峰值”估，并留对账成本余量；桶太多会让“查余量／回补”放大成扫多行，一般几个到几十个。
+
+**面经来源**
+
+- [[面经/收钱吧/一面/0001#Q09：项目中分段锁＋编程式事务是如何实现的？|MJ068 · 收钱吧 · 一面 · Q09]]
+
+**参考资料**（本次整理为通用工程口径；TransactionTemplate 语义以 Spring 当期文档为准）
+
+- [Spring Framework：事务管理（TransactionTemplate／编程式事务）](https://docs.spring.io/spring-framework/reference/data-binding/transaction.html)
+
+**相关题目**
+
+[[专题题库/MySQL#MYSQL-007：如何优化秒杀库存更新与热点行锁竞争？|MYSQL-007：热点行锁治理]]、[[专题题库/Spring#SPRING-004：@Transactional 何时不生效，如何正确调用事务方法？|SPRING-004：事务失效场景]]、[[专题题库/Java集合#JAVA-COL-002：HashMap 和 ConcurrentHashMap 有什么区别？|JAVA-COL-002：CHM 的锁粒度演进]]
