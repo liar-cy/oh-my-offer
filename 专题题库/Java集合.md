@@ -1,7 +1,7 @@
 # Java集合
 
 - 题号前缀：JAVA-COL
-- 范围：HashMap 整体工作原理（含哈希冲突处理：链地址法与开放寻址的取舍）；HashMap 扩容过程是什么，扩容时如何处理并发读写？；HashMap 和 ConcurrentHashMap 有什么区别？；HashSet 和 TreeSet 的底层实现与增删改查性能区别。
+- 范围：HashMap 整体工作原理（含哈希冲突处理：链地址法与开放寻址的取舍）；HashMap 扩容过程是什么，扩容时如何处理并发读写？；HashMap 和 ConcurrentHashMap 有什么区别？；HashSet 和 TreeSet 的底层实现与增删改查性能区别；List 的常见实现与适用场景；HashMap 树化动机与红黑树选型。
 - 最近更新：2026-09-25
 - 说明：按本库面经整理；补充练习不计入原始面试问题。个人经历答案为框架，技术版本以题内说明为准。
 
@@ -11,6 +11,8 @@
 - [[#JAVA-COL-001：HashMap 扩容过程是什么，扩容时如何处理并发读写？|JAVA-COL-001：HashMap 扩容过程是什么，扩容时如何处理并发读写？]]
 - [[#JAVA-COL-002：HashMap 和 ConcurrentHashMap 有什么区别？|JAVA-COL-002：HashMap 和 ConcurrentHashMap 有什么区别？]]
 - [[#JAVA-COL-004：HashSet 和 TreeSet 在底层实现与增删改查性能上有什么区别？|JAVA-COL-004：HashSet 和 TreeSet 在底层实现与增删改查性能上有什么区别？]]
+- [[#JAVA-COL-005：Java 的 List 有哪些实现？分别适合哪些应用场景？|JAVA-COL-005：Java 的 List 有哪些实现？分别适合哪些应用场景？]]
+- [[#JAVA-COL-006：为什么 HashMap 要把链表转成红黑树？红黑树相比其它树结构的优势是什么？|JAVA-COL-006：为什么 HashMap 要把链表转成红黑树？红黑树相比其它树结构的优势是什么？]]
 
 ### JAVA-COL-001：HashMap 扩容过程是什么，扩容时如何处理并发读写？
 
@@ -19,6 +21,7 @@
 - Java 中 HashMap 扩容的过程是什么？
 - HashMap 扩容时的读和写要怎么处理？
 - Map 扩容后旧数据怎么处理？
+- HashMap 在多线程环境下存在哪些问题？
 
 #### 面试回答
 
@@ -47,6 +50,13 @@
 - JDK 7 用头插法，并发扩容可能把链表接成环，之后 get 时死循环 —— 这是 JDK 7 的坑，不能原样套到 JDK 8（JDK 8 改成尾插并且拆链）。
 - JDK 8 不再成环，但丢更新、读到旧值、size 不准这些问题一个都没解决。
 
+**多线程直接使用 HashMap 的问题清单**
+
+- 丢更新：两个线程都判断同一空桶再 put，后写的覆盖先写的；size 计数同样会乱。
+- 可见性没有保证：没有 happens-before，另一线程读到旧表、旧值都属正常，别指望“写完立刻可见”。
+- 结构性损坏：JDK 7 并发扩容头插可成环，get 死循环打满 CPU；JDK 8 不再成环，但前两条原样存在。
+- fail-fast 不是安全机制：迭代中有人改结构只是“尽力检测到才抛” ConcurrentModificationException，它不提供任何保护。
+
 **两个容易说过头的地方**
 
 - 只给写操作加锁、读操作绕过锁，不是正确的同步协议：读侧缺少安全发布保证，仍可能看到半初始化的状态。
@@ -67,6 +77,7 @@
 - [[面经/百度/一面/0001#Q03：HashMap 如何扩容，扩容时的并发读写怎么处理？|MJ002 · 百度 · 一面 · Q03]]
 - [[面经/字节/一面/0001#Q18：HashMap 如何扩容并迁移旧数据？|MJ011 · 字节 · 一面 · Q18]]
 - [[面经/虾皮/一面/0002#Q09：谈谈 HashMap 的扩容机制。|MJ048 · 虾皮 · 一面 · Q09]]
+- [[面经/海信/电话面/0001#Q06：HashMap 在多线程环境下存在哪些问题？|MJ073 · 海信 · 电话面 · Q06]]
 
 **参考资料**（本次查证：2026-09-12）
 
@@ -79,6 +90,7 @@
 - HashMap 和 ConcurrentHashMap 有什么区别？
 - ConcurrentHashMap 的实现原理是什么？
 - ConcurrentHashMap 在项目中怎么用的？key 和 value 存的什么？
+- ConcurrentHashMap 的锁是怎么加的？锁粒度是什么？
 
 #### 面试回答
 
@@ -116,6 +128,7 @@
 - [[面经/百度/一面/0003#Q16：HashMap 和 ConcurrentHashMap 有什么区别？|MJ006 · 百度 · 一面 · Q16]]
 - [[面经/字节/一面/0001#Q19：ConcurrentHashMap 的实现原理是什么？|MJ011 · 字节 · 一面 · Q19]]
 - [[面经/收钱吧/一面/0001#Q10：ConcurrentHashMap 在项目中如何使用？key 和 value 存什么？|MJ068 · 收钱吧 · 一面 · Q10]]
+- [[面经/海信/电话面/0001#Q07：ConcurrentHashMap 的锁是怎么加的？|MJ073 · 海信 · 电话面 · Q07]]
 
 **参考资料**（查证：2026-09-13；适用版本见正文）
 
@@ -127,8 +140,10 @@
 **常见问法**
 
 - 介绍一下 HashMap。
+- 谈谈 HashMap 的底层数据结构。
 - 如果用哈希算法做映射发生了冲突，一般怎么处理？
 - 开放寻址（线性探测）和拉链法有什么区别，各自什么时候更合适？
+- 什么是哈希冲突？有哪些解决哈希冲突的方案？
 
 #### 面试回答
 
@@ -196,6 +211,8 @@
 
 - [[面经/微步在线/一面/0001#Q02：介绍一下 HashMap。|MJ043 · 微步在线 · 一面 · Q02]]
 - [[面经/字节/一面/0011#Q11：ID 映射成短链字符串怎么做，哈希冲突怎么处理，雪花算法的 64 位整数怎么编码，进制转换怎么设计？|MJ066 · 字节 · 一面 · Q11]]
+- [[面经/海信/电话面/0001#Q03：谈谈 HashMap 的底层数据结构|MJ073 · 海信 · 电话面 · Q03]]
+- [[面经/海信/电话面/0001#Q04：什么是哈希冲突？有哪些解决哈希冲突的方案？|MJ073 · 海信 · 电话面 · Q04]]
 
 **参考资料**（本次查证：2026-09-24；适用 JDK 8 及之后的实现）
 
@@ -251,3 +268,129 @@
 
 - [Java SE 17 HashSet／TreeSet API](https://docs.oracle.com/en/java/javase/17/docs/api/java.base/java/util/TreeSet.html)
 - [OpenJDK 17u TreeSet 源码（TreeMap 包装）](https://raw.githubusercontent.com/openjdk/jdk17u/master/src/java.base/share/classes/java/util/TreeSet.java)
+
+### JAVA-COL-005：Java 的 List 有哪些实现？分别适合哪些应用场景？
+
+**常见问法**
+
+- Java 的 List 有哪些实现？分别适合哪些应用场景？
+- ArrayList 和 LinkedList 有什么区别，什么时候用哪个？
+
+#### 面试回答
+
+结论：实现 List 的常用类是 ArrayList、LinkedList，并发场景用 CopyOnWriteArrayList，Vector 属于历史遗留；选型看“按下标多还是头尾插删多、要不要线程安全”。
+
+- ArrayList：动态数组。随机访问 O(1)、尾部追加摊还 O(1)；中间插删要搬元素 O(n)。默认选择——绝大多数业务都在“遍历＋按下标取”。
+- LinkedList：双向链表。头尾插删 O(1)、迭代器处 remove O(1)；但 `get(i)` 要从近端遍历 O(n)，且每个节点两个指针的内存开销大。
+- CopyOnWriteArrayList：每次写复制整个数组，读完全无锁、迭代器是快照不抛 CME；适合读极多写极少（监听器表、配置白名单），写频繁或元素多就是灾难。
+- Vector／Stack：方法级 synchronized 的旧同步容器，锁粒度粗，并发场景已被 j.u.c 容器和 Collections.synchronizedList 取代，如实带过即可。
+
+#### 技术细节
+
+**为什么“中间插删多用 LinkedList”在实践中基本不成立**
+
+- 要先 `get(i)` 或遍历定位才能插入，定位本身 O(n)，链表省掉的只是搬元素那一步。
+- 数组访问有 CPU 缓存局部性，链表是指针跳转；同规模实测 ArrayList 通常更快。
+- 真要“频繁头尾操作”，那是队列／栈的需求，用 ArrayDeque（比 LinkedList 更快、接口更贴），而不是把它当 List 用。
+
+**ArrayList 的扩容与两个经典坑**
+
+- 扩容：新容量 = 旧容量 + 旧容量右移 1 位（约 1.5 倍），再 `Arrays.copyOf`；已知规模用带初始容量的构造器避免反复扩。
+- 坑一：`Arrays.asList` 返回的是定长视图，`add/remove` 抛 UnsupportedOperationException，要可变列表得 `new ArrayList<>(...)` 包一层。
+- 坑二：`remove(int)` 和 `remove(Object)` 不同——装箱元素列表里 `list.remove(1)` 删的是下标；删 Integer 对象要显式传 `Integer.valueOf(1)`。
+
+**CopyOnWriteArrayList 的准确边界**
+
+- 单条 add／set 原子（内部 ReentrantLock＋写时复制），但“先查再改”的多步逻辑仍会竞态，size 也可能是瞬时旧值。
+- 数组按元素数复制，百万级列表每次写复制百万引用——“读多写少”要少到能数得过来。
+
+**版本差异**
+
+- JDK 1.2：ArrayList／LinkedList 登场；Vector 是 JDK 1.0 遗留。
+- JDK 1.5：concurrent 包加入 CopyOnWriteArrayList。
+- JDK 8：实现层配合 lambda 重构（`forEach`／spliterator 等默认方法进接口），对外行为契约不变。
+- JDK 9：`List.of(...)` 提供真正的不可变 List——拒绝 null、不允许重复语义交给业务判断，与“定长视图”是两回事。
+
+#### 深挖追问
+
+1. **ArrayList 存基本类型有什么代价？**（补充练习）
+
+   只能存包装类型：`ArrayList<Integer>` 每个元素是堆上对象＋列表里存引用，千万级规模下内存和拆装箱开销都远超 `int[]`。量大且是纯数值时直接考虑数组或专用库。
+
+2. **`Collections.synchronizedList` 和 CopyOnWriteArrayList 怎么选？**（补充练习）
+
+   前者是“每个方法一把大锁”，读写互斥、迭代还要手动再加锁；后者读无锁、写复制。写比例不明显低就都别选，考虑分段／并发结构或把列表变不可变＋整体替换。
+
+3. **List 迭代中删元素怎么写才对？**（补充练习）
+
+   `for-each` 中直接 `list.remove` 会触发 fail-fast 抛 CME；正确写法是迭代器的 `remove()`、或 JDK 8 的 `removeIf`、或倒序按下标删。ArrayList 与 LinkedList 都适用这条契约。
+
+**面经来源**
+
+- [[面经/海信/电话面/0001#Q02：Java 的 List 有哪些实现？分别适合哪些应用场景？|MJ073 · 海信 · 电话面 · Q02]]
+
+**参考资料**（本次查证：2026-09-25）
+
+- [Java SE 17 List／ArrayList／CopyOnWriteArrayList API](https://docs.oracle.com/en/java/javase/17/docs/api/java.base/java/util/List.html)
+- [Java SE 17 Arrays.asList 说明（定长视图）](https://docs.oracle.com/en/java/javase/17/docs/api/java.base/java/util/Arrays.html#asList(T...))
+- [OpenJDK 17u ArrayList 源码（`newCapacity = oldCapacity + (oldCapacity >> 1)`）](https://raw.githubusercontent.com/openjdk/jdk17u/master/src/java.base/share/classes/java/util/ArrayList.java)
+
+### JAVA-COL-006：为什么 HashMap 要把链表转成红黑树？红黑树相比其它树结构的优势是什么？
+
+**常见问法**
+
+- 为什么 HashMap 会把链表转为红黑树？选用红黑树相比其它树结构的优势是什么？
+- 链表太长就树化，树化解决的是什么问题？
+
+#### 面试回答
+
+结论：树化是给“冲突堆成链”兜底——链上查找最坏 O(n)，红黑树把它压回 O(log n)；选红黑树，是在 AVL、普通 BST、B 树之间取“查找不太差、改动不昂贵、不会退化”的平衡点。
+
+- 触发条件（JDK 8）：所在链长度达到 8，且桶数组容量不小于 64；表还小则先扩容而不建树。
+- 相比普通 BST：红黑树保证最长路径不超过最短的 2 倍，不会被插入顺序带偏退化成链——那等于白树化。
+- 相比 AVL：AVL 更矮查得略快，但插删的旋转／再平衡更频繁；桶里读写混布，红黑树插入至多 2 次、删除至多 3 次旋转更划算。
+- 相比 B／B+ 树：那是为“磁盘块多分叉”设计的，内存里逐行比较的单键场景没有收益，实现反而复杂。
+
+#### 技术细节
+
+**树化与退化的完整口径**
+
+- 常量：`TREEIFY_THRESHOLD=8`、`UNTREEIFY_THRESHOLD=6`、`MIN_TREEIFY_CAPACITY=64`，都是 HashMap 的静态常量。
+- 阈值 8 的依据（源码注释口径）：随机哈希下桶内元素数近似 λ=0.5 的泊松分布，链长达到 8 的概率约千万分之六——树化防的是“哈希质量差／被恶意构造”的极端，不是常态。
+- 退化用 6 是与 8 留间隙，避免在临界点反复互转；扩容拆分树桶时，两侧若都退化到 6 以下也顺势转回链表。
+- 树化后单桶查找 O(log n)，前提是 key 可比较或哈希够散： Comparable 缺失时红黑树用 `tieBreakOrder`（先比 class 名再比 identityHashCode）定序——所以自定义 key 实现 Comparable 能让树桶更快。
+
+**“红黑树 vs AVL”说清楚换的是什么**
+
+- 红黑树的不变量（黑高一致、无连续红）比 AVL 的严格平衡松，树可能高出一点，查找平均略慢。
+- 换来的是修改局部化：一次插入的修复通常只波及近端少数节点，不触发链式再平衡——桶链表反复挂链／脱链的形态更吃这个。
+- JDK 自己也是同样取舍：TreeMap 同样是红黑树；早期版本用过 AVL 后换掉是公开历史（见 JAVA-COL-004 深挖）。
+
+**容易说过头的地方**
+
+- 别讲成“HashMap 查找整体变 O(log n)”：定位桶仍是 O(1)，只有“超长链的那一个桶”内查找变 O(log n)。
+- 别把树化说成性能优化：它是防最坏情况的兜底，树节点比普通节点更大更重，正常短链下 HashMap 根本不会用到树。
+- “为什么不是跳表”这类追问可如实答：JDK 选择在容器家族里统一用红黑树（与 TreeMap 同族）；并发有序结构才见跳表（ConcurrentSkipListMap），两者比较对象不同。
+
+#### 深挖追问
+
+1. **为什么退化阈值是 6 而不是 8？**（补充练习；树化阈值一侧见 [[#JAVA-COL-003：HashMap 整体是如何工作的？|JAVA-COL-003]] 的深挖追问 1）
+
+   留缓冲带。若加删一个元素就在 7／8 附近反复触发改结构，链表与树的相互转换成本比省下的查找还贵；退化线取 6，配合扩容拆树时的批量检查，避免抖动。
+
+2. **树化后 put 还快吗？会不会更慢？**（补充练习）
+
+   单桶内比长链快；但树节点的分配、旋转比链表追加重。所以短链（≤8）时 HashMap 宁可挂在链上——这也是“树化是兜底不是提速”的含义。
+
+3. **元素都不实现 Comparable 会怎样？**（补充练习）
+
+   树仍能建（tieBreakOrder 兜底定序），但同 hash 桶内比较失去“按键值短路”的机会，查找退化成一层层等价判断。自定义 key 想吃到树化收益就实现 Comparable，或者——修好 hashCode 让链根本别长到 8。
+
+**面经来源**
+
+- [[面经/海信/电话面/0001#Q05：为什么 HashMap 要把链表转为红黑树？红黑树相比其它树结构的优势是什么？|MJ073 · 海信 · 电话面 · Q05]]
+
+**参考资料**（本次查证：2026-09-25；适用 JDK 8 及之后的实现）
+
+- [OpenJDK 8u HashMap 源码（树化常量与注释）](https://github.com/openjdk/jdk8u/blob/master/jdk/src/share/classes/java/util/HashMap.java)
+- [Java SE 17 HashMap API](https://docs.oracle.com/en/java/javase/17/docs/api/java.base/java/util/HashMap.html)
