@@ -131,6 +131,7 @@
 - [[面经/收钱吧/一面/0001#Q10：ConcurrentHashMap 在项目中如何使用？key 和 value 存什么？|MJ068 · 收钱吧 · 一面 · Q10]]
 - [[面经/海信/电话面/0001#Q07：ConcurrentHashMap 的锁是怎么加的？|MJ073 · 海信 · 电话面 · Q07]]
 - [[面经/字节/三面/0002#Q09：谈谈 ConcurrentHashMap 的底层实现|MJ077 · 字节 · 三面 · Q09]]
+- [[面经/小米/一面/0001#Q15：HashMap 和 ConcurrentHashMap 有什么区别？|MJ078 · 小米 · 一面 · Q15]]
 
 **参考资料**（查证：2026-09-13；适用版本见正文）
 

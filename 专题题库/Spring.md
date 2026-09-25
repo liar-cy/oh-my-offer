@@ -1,7 +1,7 @@
 # Spring
 
 - 题号前缀：SPRING
-- 范围：Spring Boot 有哪些关键特性；Spring Boot 自动装配的原理是什么？；IoC 是什么，容器如何创建和管理 Bean？；AOP 的原理是什么，为什么自调用可能失效？；@Transactional 何时不生效，如何正确调用事务方法？；@Resource 与 @Autowired 有什么区别，如何按名称注入？；Spring 如何处理循环依赖，如何解决？；什么是懒加载，@Lazy 在哪里生效？；@Transactional 方法里新开线程是否还在同一事务；常用注解及其处理者；@Autowired 的注入流程与反射实现；Bean 的完整生命周期；基于 Boot 开发会用到的工具链。
+- 范围：Spring Boot 有哪些关键特性；Spring Boot 自动装配的原理是什么？；IoC 是什么，容器如何创建和管理 Bean？；AOP 的原理是什么，为什么自调用可能失效？；@Transactional 何时不生效，如何正确调用事务方法？；@Resource 与 @Autowired 有什么区别，如何按名称注入？；Spring 如何处理循环依赖，如何解决？；什么是懒加载，@Lazy 在哪里生效？；@Transactional 方法里新开线程是否还在同一事务；常用注解及其处理者；@Autowired 的注入流程与反射实现；Bean 的完整生命周期；基于 Boot 开发会用到的工具链；Spring 对 WebSocket 的支持（两条技术路线与业务侧消息确认）；Spring MVC 一次请求经过的组件链路。
 - 最近更新：2026-09-25
 - 说明：按本库面经整理；补充练习不计入原始面试问题。个人经历答案为框架，技术版本以题内说明为准。
 
@@ -23,11 +23,15 @@
 - [[#SPRING-010：@Autowired 的注入流程与反射实现细节？|SPRING-010：@Autowired 的注入流程与反射实现细节？]]
 - [[#SPRING-011：Spring Bean 的完整生命周期是怎样的？|SPRING-011：Spring Bean 的完整生命周期是怎样的？]]
 
+- [[#SPRING-016：Spring 用哪些类和注解支持 WebSocket？可靠消息需要业务层自己确认吗？|SPRING-016：Spring 的 WebSocket 支持与消息确认]]
+- [[#SPRING-017：Spring MVC 处理一个请求会经过哪些组件？|SPRING-017：Spring MVC 请求处理流程]]
+
 ### SPRING-001：Spring Boot 自动装配的原理是什么？
 
 **常见问法**
 
 - Spring Boot 自动装配的原理是什么？
+- [[面经/小米/二面/0001#Q07：自定义一个组件集成到 SpringBoot 中，要做哪些操作？|MJ079 · 小米 · 二面 · Q07]]
 
 #### 面试回答
 
@@ -66,11 +70,18 @@
 
    按顺序查：依赖在不在、候选有没有注册上、属性开关、排除项，最后看条件报告；再核对当前版本用的是哪种配置方式。
 
+3. **自定义一个组件集成到 Spring Boot，要做哪些操作？**（面经实际出现；[[面经/小米/二面/0001#Q07：自定义一个组件集成到 SpringBoot 中，要做哪些操作？|MJ079 · 小米 · 二面 · Q07]]）
+
+   反向走一遍自动装配链条即可：写 `@AutoConfiguration` 配置类，把组件注册成 `@Bean`；用 `@ConfigurationProperties` 暴露 `xxx.*` 配置项；加 `@ConditionalOnClass`／`@ConditionalOnMissingBean` 让使用者能覆盖；在 `META-INF/spring/org.springframework.boot.autoconfigure.AutoConfiguration.imports` 登记配置类全限定名（2.7 前写 `spring.factories`）。
+
+   发布形态按官方惯例拆两个构件：`xxx-spring-boot-autoconfigure` 放装配代码，`xxx-spring-boot-starter` 只聚依赖不含代码——使用者加一个 starter 依赖就能用。
+
 **面经来源**
 
 - [[面经/用友/一面/0001#Q07：Spring Boot 自动装配的原理是什么？|MJ001 · 用友 · 一面 · Q07]]
 - [[面经/微步在线/一面/0001#Q12：谈谈 SpringBoot 的自动装配原理。|MJ043 · 微步在线 · 一面 · Q12]]
 - [[面经/虾皮/一面/0002#Q13：谈谈 SpringBoot 的启动过程。|MJ048 · 虾皮 · 一面 · Q13]]
+- [[面经/小米/二面/0001#Q07：自定义一个组件集成到 SpringBoot 中，要做哪些操作？|MJ079 · 小米 · 二面 · Q07]]
 
 **参考资料**（本次查证：2026-09-19）
 
@@ -682,6 +693,9 @@ Spring 的懒加载，就是把 Bean 的创建从“容器启动时”推迟到�
 
 - 请讲一下 Spring 中一个 Bean 的生命周期。
 - 一个 Bean 从创建到销毁经历了哪些步骤？
+- [[面经/小米/一面/0001#Q11：Spring 中的类在启动之后会执行哪些方法、用到哪些注解？|MJ078 · 小米 · 一面 · Q11]]
+- 构造方法和 @Autowired 哪个先执行？
+- @PostConstruct 和实现 InitializingBean 重写 init 方法，哪个先执行？
 
 #### 面试回答
 
@@ -742,10 +756,23 @@ Spring 的懒加载，就是把 Bean 的创建从“容器启动时”推迟到�
    - 初始化里读不到其他 Bean 的状态：时机太早，改用 SmartInitializingSingleton 或事件。
    - 关闭时报连接池已关：销毁顺序问题，需要显式控制依赖或者提前 flush。
 
+4. **构造方法和 @Autowired 哪个先执行？**（面经实际出现；[[面经/小米/一面/0001#Q13：构造方法和 @Autowired 哪个先执行？|MJ078 · 小米 · 一面 · Q13]]）
+
+   构造方法先。生命周期顺序是“实例化（调构造）→ 属性填充（@Autowired 由 `AutowiredAnnotationBeanPostProcessor` 反射写入）”。
+
+   推论：构造方法体里读 `@Autowired` 字段一定是 null。构造器注入是例外视角：依赖先解析成参数、再随构造一次性传入，对象诞生即依赖齐全——这也是推荐构造器注入、循环依赖对它无解的共同原因。
+
+5. **@PostConstruct 和 InitializingBean#afterPropertiesSet 哪个先执行？**（面经实际出现；[[面经/小米/一面/0001#Q14：@PostConstruct 注解和实现 InitializingBean 重写 init 方法，哪个先执行？|MJ078 · 小米 · 一面 · Q14]]）
+
+   `@PostConstruct` 先。`InitDestroyAnnotationBeanPostProcessor` 在初始化前置回调里先触发它，随后才是容器强约束的 `afterPropertiesSet`，最后是配置指定的 `init-method`。三者时机都在“属性填充之后、代理生成之前”，业务代码统一用 `@PostConstruct` 即可；销毁侧顺序对称为 `@PreDestroy` → `destroy()` → destroy-method。
+
 **面经来源**
 
 - [[面经/小红书/一面/0001#Q04：请讲一下 Spring 中一个 Bean 的生命周期。|MJ040 · 小红书 · 一面 · Q04]]
 - [[面经/虾皮/一面/0002#Q13：谈谈 SpringBoot 的启动过程。|MJ048 · 虾皮 · 一面 · Q13]]
+- [[面经/小米/一面/0001#Q11：Spring 中的类在启动之后会执行哪些方法、用到哪些注解？|MJ078 · 小米 · 一面 · Q11]]
+- [[面经/小米/一面/0001#Q13：构造方法和 @Autowired 哪个先执行？|MJ078 · 小米 · 一面 · Q13]]
+- [[面经/小米/一面/0001#Q14：@PostConstruct 注解和实现 InitializingBean 重写 init 方法，哪个先执行？|MJ078 · 小米 · 一面 · Q14]]
 
 **参考资料**（查证：2026-09-23）
 
@@ -1000,3 +1027,131 @@ Spring 的懒加载，就是把 Bean 的创建从“容器启动时”推迟到�
 **相关题目**
 
 [[#SPRING-004：@Transactional 何时不生效，如何正确调用事务方法？|SPRING-004：失效场景与修法]]、[[#SPRING-003：AOP 的原理是什么，为什么自调用可能失效？|SPRING-003：代理机制]]
+
+### SPRING-016：Spring 用哪些类和注解支持 WebSocket？可靠消息需要业务层自己确认吗？
+
+**常见问法**
+
+- [[面经/小米/一面/0001#Q04：WebSocket 在 Spring 框架中涉及哪些类或注解；客户端与服务端通信需要在业务侧写代码做消息确认吗？|MJ078 · 小米 · 一面 · Q04]]
+- 你们项目的长连接是怎么在 Spring 里写出来的？
+
+#### 面试回答
+
+结论：Spring 提供两条路线——原生 WebSocket（`@EnableWebSocket`＋`WebSocketHandler`）适合自定义协议消息；STOMP 消息代理（`@MessageMapping`／`@SendTo`）适合“订阅目的地”式的即时通讯。要不要业务侧确认按“消息丢了会怎样”判断：通知类可以不做，涉钱涉指令必须做。
+
+核心类与注解速报：
+
+- 原生线：`@EnableWebSocket` 开启；实现 `WebSocketHandler`（常用继承 `TextWebSocketHandler`）写 `afterConnectionEstablished`／`handleTextMessage`；`HandshakeInterceptor` 在 HTTP 升级前鉴权；`WebSocketConfigurer#registerWebSocketHandlers` 注册端点路径与 `setAllowedOrigins`。
+- STOMP 线：`@EnableWebSocketMessageBroker`；`configureMessageBroker` 设应用前缀与代理前缀；`@Controller`＋`@MessageMapping` 收、`@SendTo`／`SimpMessagingTemplate#convertAndSendToUser` 发；`@SubscribeMapping` 订阅即答。
+- 会话管理：`WebSocketSession` 非线程安全，发送要加锁；userId→session 映射自己维护（多实例要放 Redis 等共享存储并用广播转发）。
+
+#### 技术细节
+
+**两条线怎么选**
+
+- 自定义帧格式、点对点推送、和已有二进制协议打通——原生线。
+- 前端用 SockJS／STOMP 客户端、要“房间／用户”订阅模型、想复用消息代理（SimpleBroker 或外部 RabbitMQ STOMP）——消息线。
+- 两条线底层都是 `spring-websocket` 模块，握手都走 HTTP Upgrade（原理见 [[专题题库/计算机网络#NET-022：WebSocket 的底层原理是什么？连接是怎么建立的？|NET-022]]）。
+
+**“要不要消息确认”分三层说**
+
+- 传输层：TCP 保证已交付字节的可靠与有序；这层不用写代码。
+- 协议层：WebSocket 有 ping／pong 探活与 close 帧，但没有逐条消息的应用层 ACK；连接活着≠对端业务处理成功。
+- 业务层：会“丢”的两种场景要确认——服务端推送后客户端崩溃没消费；客户端发送时连接刚断，写进socket 的数据随连接作废。
+- 落地形态：服务端回执消息（带原消息 ID＋状态）、客户端超时重发、双方按消息 ID 幂等去重；或者更常用的“序号＋重连补拉”——重连后客户端带最后已确认序号，服务端从存储补发缺口。
+- 结论句：确认机制是业务可靠投递设计，不是 WebSocket 的义务；即时展示类（弹幕、在线状态）直说“不做确认，丢一条无所谓”。
+
+**容易说过头的地方**
+
+- 别说“WebSocket 全双工所以天然可靠”——全双工说的是通信方向，不是投递语义。
+- `@MessageMapping` 收不到“客户端没回 ACK”这件事——代理只保证把帧路由进方法。
+- 多实例部署下内存 Map 存 session 会推送丢失：session 不可跨进程迁移，必须共享路由表＋节点间广播。
+
+#### 深挖追问
+
+1. **心跳和断线重连谁负责？**（补充练习；[[面经/收钱吧/二面/0001#Q05：WebSocket 的底层原理与连接建立过程|MJ069 · 收钱吧 · 二面 · Q05]] 的延伸）
+
+   两端都要：服务端定时 ping（或业务空包）探测半开连接，中间层（Nginx）默认 60 秒空闲会掐连接，心跳间隔要小于它；重连由客户端负责退避重试＋恢复后重建订阅与补拉数据。
+
+2. **Spring 的 WebSocket 和 Socket 是什么关系？**（补充练习）
+
+   WebSocket 是跑在 TCP 之上的应用层消息协议，与 Socket（API）不同层，见 [[专题题库/计算机网络#NET-021：WebSocket 和 Socket 分别属于哪一层，是什么关系？|NET-021]]。
+
+**面经来源**
+
+- [[面经/小米/一面/0001#Q04：WebSocket 在 Spring 框架中涉及哪些类或注解；客户端与服务端通信需要在业务侧写代码做消息确认吗？|MJ078 · 小米 · 一面 · Q04]]
+
+**参考资料**（本次查证：2026-09-25；适用 Spring Framework 6.x 文档口径）
+
+- [Spring Framework Reference：WebSocket 服务端（原生与消息代理两条线）](https://docs.spring.io/spring-framework/reference/web/websocket.html)
+- [Spring Framework Reference：WebSocket 消息（STOMP）](https://docs.spring.io/spring-framework/reference/web/websocket/stomp.html)
+
+**相关题目**
+
+[[专题题库/计算机网络#NET-022：WebSocket 的底层原理是什么？连接是怎么建立的？|NET-022：握手与帧]]、[[专题题库/计算机网络#NET-016：SSE 和 WebSocket 有什么区别，如何选择？|NET-016：选型对比]]
+
+### SPRING-017：Spring MVC 处理一个请求会经过哪些组件？
+
+**常见问法**
+
+- [[面经/小米/一面/0001#Q10：Spring 处理一个请求会经过哪些模块？|MJ078 · 小米 · 一面 · Q10]]
+- 一个 HTTP 请求在 Spring 里是怎么被处理的？
+
+#### 面试回答
+
+结论：主干是 `DispatcherServlet.doDispatch` 串起“HandlerMapping 找处理器 → HandlerAdapter 调 Controller → 返回值经消息转换器或视图解析器出响应”，过滤器、拦截器、异常解析器横切在前后。
+
+按时序报模块：
+
+1. Servlet 容器收下请求，先过 Filter 链（跨域、鉴权、编码）。
+2. 进入前端控制器 `DispatcherServlet`。
+3. `HandlerMapping`：按 URL（与请求条件）定位 Handler，返回“处理器＋拦截器链”的执行链。
+4. `HandlerInterceptor#preHandle`：任一返回 false 就中断。
+5. `HandlerAdapter`：适配并反射调用 Handler 方法；参数由 `HandlerMethodArgumentResolver` 逐个解析，`@RequestBody` 走 `HttpMessageConverter` 反序列化。
+6. 返回值处理：`@ResponseBody` 经 `HttpMessageConverter`（Jackson 等）序列化直接写响应；页面请求返回 ModelAndView，交给 `ViewResolver` 解析视图并渲染。
+7. 异常路径：处理过程抛错走 `HandlerExceptionResolver`（含 `@ExceptionHandler`／`@ControllerAdvice`）。
+8. `postHandle` → 视图渲染完成后 `afterCompletion`；响应写回容器。
+
+#### 技术细节
+
+**为什么要有 HandlerAdapter 这层**
+
+- 早期 SpringMVC 允许 Controller 实现不同类型接口（`Controller` 接口、HttpRequestHandler 等），适配器统一“怎么调用”；今天注解 POJO 占绝对主流，但结构保留。
+- `@RequestMapping` 的注册本质：启动期把方法解析成 `RequestMappingInfo`→HandlerMethod 映射存进 `RequestMappingHandlerMapping`。
+
+**每步的扩展点（追问“想插入自己的逻辑怎么办”）**
+
+- 请求进出：Filter（容器级）、Interceptor（MVC 级）、`RequestBodyAdvice`／`ResponseBodyAdvice`（_body 加工）、`HandlerMethodArgumentResolver` 自定义参数。
+- 异常：`@ControllerAdvice＋@ExceptionHandler` 全局兜底。
+- 异步：返回 `Callable`／`DeferredResult` 时 `DispatcherServlet` 释放容器线程，靠 `AsyncContext` 完成时再派发——长任务转异步是这层支持的。
+
+**容易混淆的边界**
+
+- Tomcat 收连接、走连接器与线程池发生在进入 Spring 之前；这题问的是“进入 Spring 之后”。
+- Gateway／安全过滤器链（Spring Security 的 `FilterChainProxy`）都挂在 Filter 阶段，不是 MVC 自己的组件。
+- Spring Boot 的嵌入式容器默认把 `DispatcherServlet` 注册到 `/`；接口 404 而 actuator 正常，多半是映射没进 `HandlerMapping`。
+
+#### 深挖追问
+
+1. **拦截器和过滤器怎么选？**（补充练习）
+
+   Filter 是 Servlet 规范、拿到的是裸 request／response，适合跨域、日志、鉴权这类框架外关注点。
+
+   Interceptor 在 MVC 体系内，能拿到 HandlerMethod（知道要执行哪个 Controller 方法），适合登录态注入、接口级权限与耗时统计。需要 Spring 上下文依赖注入时只能 Interceptor（或用容器级 Filter 代理）。
+
+2. **自研框架／RPC 场景下被问“你的 DispatcherServlet 链路怎么监控”？**（补充练习）
+
+   在 Interceptor 或 `RequestBodyAdvice` 打点阶段耗时，配合 APM 的 servlet 插桩看入口 RT；慢接口按 Q10 的分层法继续下钻。
+
+**面经来源**
+
+- [[面经/小米/一面/0001#Q10：Spring 处理一个请求会经过哪些模块？|MJ078 · 小米 · 一面 · Q10]]
+
+**参考资料**（本次查证：2026-09-25；适用 Spring Framework 6.x 文档口径）
+
+- [Spring Framework Reference：Spring MVC 的 DispatcherServlet 与请求处理](https://docs.spring.io/spring-framework/reference/web/webmvc/mvc-servlet.html)
+- [Spring Framework Reference：MVC 配置与拦截器](https://docs.spring.io/spring-framework/reference/web/webmvc/mvc-config/interceptors.html)
+
+**相关题目**
+
+[[#SPRING-009：Spring 常用注解有哪些，分别由哪个扩展点处理？|SPRING-009：注解与处理扩展点]]、[[#SPRING-003：AOP 的原理是什么，为什么自调用可能失效？|SPRING-003：AOP 代理]]
