@@ -1,7 +1,7 @@
 # Java集合
 
 - 题号前缀：JAVA-COL
-- 范围：HashMap 整体工作原理（含哈希冲突处理：链地址法与开放寻址的取舍）；HashMap 扩容过程是什么，扩容时如何处理并发读写？；HashMap 和 ConcurrentHashMap 有什么区别？；HashSet 和 TreeSet 的底层实现与增删改查性能区别；List 的常见实现与适用场景；HashMap 树化动机与红黑树选型。
+- 范围：HashMap 整体工作原理（含哈希冲突处理：链地址法与开放寻址的取舍）；HashMap 扩容过程是什么，扩容时如何处理并发读写？；HashMap 和 ConcurrentHashMap 有什么区别？；HashSet 和 TreeSet 的底层实现与增删改查性能区别；List 的常见实现与适用场景；HashMap 树化动机与红黑树选型；线程安全集合盘点与选择。
 - 最近更新：2026-09-25
 - 说明：按本库面经整理；补充练习不计入原始面试问题。个人经历答案为框架，技术版本以题内说明为准。
 
@@ -13,6 +13,7 @@
 - [[#JAVA-COL-004：HashSet 和 TreeSet 在底层实现与增删改查性能上有什么区别？|JAVA-COL-004：HashSet 和 TreeSet 在底层实现与增删改查性能上有什么区别？]]
 - [[#JAVA-COL-005：Java 的 List 有哪些实现？分别适合哪些应用场景？|JAVA-COL-005：Java 的 List 有哪些实现？分别适合哪些应用场景？]]
 - [[#JAVA-COL-006：为什么 HashMap 要把链表转成红黑树？红黑树相比其它树结构的优势是什么？|JAVA-COL-006：为什么 HashMap 要把链表转成红黑树？红黑树相比其它树结构的优势是什么？]]
+- [[#JAVA-COL-007：Java 中哪些集合是线程安全的，怎么选择？|JAVA-COL-007：线程安全集合盘点]]
 
 ### JAVA-COL-001：HashMap 扩容过程是什么，扩容时如何处理并发读写？
 
@@ -216,6 +217,7 @@
 - [[面经/字节/一面/0011#Q11：ID 映射成短链字符串怎么做，哈希冲突怎么处理，雪花算法的 64 位整数怎么编码，进制转换怎么设计？|MJ066 · 字节 · 一面 · Q11]]
 - [[面经/海信/电话面/0001#Q03：谈谈 HashMap 的底层数据结构|MJ073 · 海信 · 电话面 · Q03]]
 - [[面经/海信/电话面/0001#Q04：什么是哈希冲突？有哪些解决哈希冲突的方案？|MJ073 · 海信 · 电话面 · Q04]]
+- [[面经/浙江大华/电话面/0001#Q06：HashMap 的原理|MJ080 · 浙江大华 · 电话面 · Q06]]
 
 **参考资料**（本次查证：2026-09-24；适用 JDK 8 及之后的实现）
 
@@ -331,6 +333,7 @@
 **面经来源**
 
 - [[面经/海信/电话面/0001#Q02：Java 的 List 有哪些实现？分别适合哪些应用场景？|MJ073 · 海信 · 电话面 · Q02]]
+- [[面经/浙江大华/电话面/0001#Q05：ArrayList 和 LinkedList 的区别|MJ080 · 浙江大华 · 电话面 · Q05]]
 
 **参考资料**（本次查证：2026-09-25）
 
@@ -397,3 +400,66 @@
 
 - [OpenJDK 8u HashMap 源码（树化常量与注释）](https://github.com/openjdk/jdk8u/blob/master/jdk/src/share/classes/java/util/HashMap.java)
 - [Java SE 17 HashMap API](https://docs.oracle.com/en/java/javase/17/docs/api/java.base/java/util/HashMap.html)
+
+### JAVA-COL-007：Java 中哪些集合是线程安全的，怎么选择？
+
+**常见问法**
+
+- [[面经/浙江大华/电话面/0001#Q04：哪些集合是线程安全的？|MJ080 · 浙江大华 · 电话面 · Q04]]
+- Vector、Hashtable、ConcurrentHashMap 这些都线程安全吗？程度一样吗？
+
+#### 面试回答
+
+结论：线程安全的集合按年代分三档，都叫安全，实现与代价完全不同。
+
+- 三档：JDK 1.0 的全表锁遗留类（Vector／Hashtable／Stack）；JUC 的细粒度并发类（ConcurrentHashMap、CopyOnWrite 系、BlockingQueue）；“不改就是安全”的不可变集合。
+
+- 遗留类：`Vector`、`Hashtable`、`Stack` 方法级 `synchronized`，一次锁整张表；复合操作（先 get 再 add）仍不原子；新代码不用。
+- 并发优化类：`ConcurrentHashMap`（CAS＋桶头 synchronized，size 分片计数）、`CopyOnWriteArrayList`／`CopyOnWriteArraySet`（写时复制，读零开销）、`BlockingQueue` 家族（`ArrayBlockingQueue`／`LinkedBlockingQueue`／`PriorityBlockingQueue`，锁＋Condition 实现阻塞语义）、`ConcurrentSkipListMap`（跳表做有序并发）。
+- 包装类：`Collections.synchronizedList/Map` 只是把每个方法加一把互斥锁——单方法安全，遍历与复合操作仍要调用方自己锁该包装对象。
+- 不可变类：`List.of`／`Map.of`（JDK 9＋）创建后不能改，安全来自“没有写”；`Collections.unmodifiableList` 是只读视图，底层被改则视图跟着变——两者不同，别说混。
+
+#### 技术细节
+
+**“线程安全”要拆开问三件事**
+
+- 单操作原子性：三档全都满足（不可变是空满足）。
+- 复合操作正确性：全都不自动满足——`if (!map.containsKey(k)) map.put(...)` 即使 ConcurrentHashMap 也要换成 `putIfAbsent`／`computeIfAbsent`。
+- 迭代一致性：遗留类与包装类要么 fail-fast、要么全程锁表；CHM 与 CopyOnWrite 是弱一致／快照遍历，不抛并发修改异常但可能读到旧态。
+
+**选择口径**
+
+- 读多写极少的小列表：`CopyOnWriteArrayList`（监听器列表是典型）；每次写复制整数组，大列表高频写直接出局。
+- 共享键值映射：`ConcurrentHashMap`；需要“不存在才建且只建一次”用 `computeIfAbsent`，注意函数里不能再操作同一个 map。
+- 生产者消费者：直接用 `BlockingQueue`，把“等待元素／等待空间”交给队列，而不是自己条件变量轮询。
+- 只在初始化时构建、之后只读的查找表：构建完包成不可变（`Map.copyOf`／`unmodifiableMap`）发布，比并发容器更快更省。
+- `Collections.synchronizedList` 的正当用途只剩一个：把旧代码里的 ArrayList 低成本过渡到单锁安全，且迭代处记得 `synchronized (list)`。
+
+**容易说过头的地方**
+
+- 别说“Hashtable 和 Vector 不安全”——它们安全，只是粒度粗；淘汰理由是性能与扩展性，不是正确性。
+- ConcurrentHashMap 的 `size()` 是基表＋CounterCell 的估算和，并发写时只是近似；要精确计数得自己加原子变量。
+- 线程安全集合解决不了跨集合不变量（两个 map 同步增删）——那需要外部锁或换一种数据结构。
+
+#### 深挖追问
+
+1. **为什么 JDK 9 的 List.of 允许安全发布而 Arrays.asList 不行？**（补充练习）
+
+   `List.of` 真不可变（改即抛 `UnsupportedOperationException`），可以当常量公开；`Arrays.asList` 是数组视图——set 能写回原数组、size 不可变，既不算只读也不算线程安全。
+
+2. **BlockingQueue 的 offer／put／take 在满和空时各是什么行为？**（补充练习）
+
+   `put`／`take` 阻塞等待；`offer(e, timeout, unit)` 带超时；`offer`／`poll` 立即返回布尔。有界队列要显式定满时策略（阻塞、丢弃还是拒绝），这在线程池配置里就是 workQueue 行为（见 JUC-002）。
+
+**面经来源**
+
+- [[面经/浙江大华/电话面/0001#Q04：哪些集合是线程安全的？|MJ080 · 浙江大华 · 电话面 · Q04]]
+
+**参考资料**（本次查证：2026-09-25）
+
+- [Java SE 17 Collections 概览（Synchronized Wrappers 与 Unmodifiable Views 文档）](https://docs.oracle.com/en/java/javase/17/docs/api/java.base/java/util/Collections.html)
+- [Java SE 17 Concurrent 包概览（并发集合与队列）](https://docs.oracle.com/en/java/javase/17/docs/api/java.base/java/util/concurrent/package-summary.html)
+
+**相关题目**
+
+[[#JAVA-COL-002：HashMap 和 ConcurrentHashMap 有什么区别？|JAVA-COL-002：CHM 细节]]、[[#JAVA-COL-005：Java 的 List 有哪些实现？分别适合哪些应用场景？|JAVA-COL-005：List 实现]]、[[专题题库/Java并发#JUC-014：Java 有哪些实现线程安全的手段？|JUC-014：线程安全手段]]、[[专题题库/Java并发#JUC-021：CopyOnWriteArrayList 是怎么保证线程安全的？为什么没有 CopyOnWriteLinkedList？|JUC-021：写时复制]]
