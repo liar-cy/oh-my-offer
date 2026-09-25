@@ -1,7 +1,7 @@
 # MySQL
 
 - 题号前缀：MYSQL
-- 范围：一条 SQL 的执行过程（连接器／分析器／优化器／执行器／存储引擎）、SQL 子句逻辑执行顺序、事务与 ACID 实现机制、日志、索引（含 B+ 树导航与对 B 树对比、容量估算）、锁与并发控制、连接池、连接失败与内存占用高的故障排查、存储引擎、数据类型、MVCC、慢 SQL 与数据库调优分层清单。
+- 范围：一条 SQL 的执行过程（连接器／分析器／优化器／执行器／存储引擎）、SQL 子句逻辑执行顺序、事务与 ACID 实现机制、日志、索引（含 B+ 树导航与对 B 树对比、容量估算）、锁与并发控制、连接池、连接失败与内存占用高的故障排查、存储引擎、数据类型、MVCC、慢 SQL 与数据库调优分层清单、内部临时表与复制表等 DDL／DML 实操。
 - 最近更新：2026-09-25
 - 说明：按本库面经整理；补充练习不计入原始面试问题。个人经历答案为框架，技术版本以题内说明为准。
 
@@ -52,6 +52,9 @@
 - [[#MYSQL-032：线上频繁出现数据库连接失败，怎么排查、可能有哪些原因？|MYSQL-032：线上频繁出现数据库连接失败，怎么排查、可能有哪些原因？]]
 - [[#MYSQL-033：数据库内存占用高，可能有哪些原因，怎么定位？|MYSQL-033：数据库内存占用高，可能有哪些原因，怎么定位？]]
 - [[#MYSQL-034：数据库调优可以从哪些方面入手？|MYSQL-034：数据库调优可以从哪些方面入手？]]
+- [[#MYSQL-035：MySQL 什么时候会使用内部临时表？|MYSQL-035：内部临时表的触发场景与落盘判断]]
+- [[#MYSQL-036：MySQL 怎么快速复制一张表（结构＋数据）？|MYSQL-036：复制表的两种语法与陷阱]]
+- placeholder
 
 ### MYSQL-001：MySQL 事务有哪些隔离级别？
 
@@ -751,6 +754,7 @@ WHERE id = :batch_id AND stock >= :quantity;
 **常见问法**
 
 - 什么是覆盖索引，如何设计索引？
+- 主键等值查询时，`select *` 和 `select id` 效率一样吗？为什么？
 
 - MySQL 的覆盖索引、前缀索引、索引下推分别是什么？
 
@@ -801,12 +805,23 @@ WHERE id = :batch_id AND stock >= :quantity;
 
 - [[面经/百度/一面/0003#Q11：什么是覆盖索引，如何设计索引？|MJ006 · 百度 · 一面 · Q11]]
 - [[面经/百度/一面/0008#Q04：MySQL 的覆盖索引、前缀索引、索引下推分别是什么？|MJ019 · 百度 · 一面 · Q04]]
+- [[面经/途虎养车/一面/0001#Q09：主键等值查询，select * 和 select id 效率一样吗？为什么？|MJ070 · 途虎养车 · 一面 · Q09]]
 
 **参考资料**（查证：2026-09-13；适用版本见正文）
 
 - [MySQL 8.4，联合索引](https://dev.mysql.com/doc/refman/8.4/en/multiple-column-indexes.html)
 - [MySQL 8.4，聚簇与二级索引](https://dev.mysql.com/doc/refman/8.4/en/innodb-index-types.html)
 - [MySQL 8.4，MVCC 与二级索引可见性检查](https://dev.mysql.com/doc/refman/8.4/en/innodb-multi-versioning.html)
+
+#### 深挖追问
+
+1. **主键等值条件下 `select *` 和 `select id` 一样快吗？**（面经实际出现；[[面经/途虎养车/一面/0001#Q09：主键等值查询，select * 和 select id 效率一样吗？为什么？|MJ070 · 途虎养车 · 一面 · Q09]]）
+
+   不一样，但别说成“select * 会回表”——主键等值命中的就是聚簇索引叶子，两种写法都不存在回表。
+
+   - 真实差距：行宽决定读页与解析量（溢出列还要追 LOB 页），`SELECT *` 的结果集更大——server 层序列化与网络传输都变贵。
+   - 回表话题的正确打开方式：走二级索引时，`select id` 能被覆盖索引接住，`select *` 必须回聚簇索引取整行。
+   - 结论照旧：按列取，不给“加字段就改变查询行为”留口子。
 
 ### MYSQL-011：MySQL 服务层与存储引擎架构是什么？
 
@@ -1105,6 +1120,7 @@ MVCC（多版本并发控制）解决的是“读别挡住写、写别挡住读�
 - [[面经/帆软/一面/0002#Q10：表到千万级查询很慢是什么原因，回表是什么？|MJ027 · 帆软 · 一面 · Q10]]
 - [[面经/招银云创/一面/0001#Q09：MySQL 语句编写需要注意哪些事项？|MJ055 · 招银云创 · 一面 · Q09]]
 - [[面经/淘天/一面/0001#Q02：MySQL 查询做过哪些索引优化，用过 EXPLAIN 吗？|MJ058 · 淘天 · 一面 · Q02]]
+- [[面经/途虎养车/一面/0001#Q08：服务程序明显变慢、运行吃力，诊断思路是什么？|MJ070 · 途虎养车 · 一面 · Q08]]
 
 **参考资料**（查证日期：2026-09-17；适用 MySQL 8.4）
 
@@ -1430,6 +1446,7 @@ COMMIT;
 
 - [[面经/字节/一面/0004#Q14：大分页查询怎么优化？|MJ014 · 字节 · 一面 · Q14]]
 - [[面经/百度/二面/0003#Q10：大数据的分页查询会出现什么问题，怎么解决？|MJ020 · 百度 · 二面 · Q10]]
+- [[面经/途虎养车/一面/0001#Q12：主存 100G，对 200G 的表做全表扫描，会吃光内存吗？为什么？|MJ070 · 途虎养车 · 一面 · Q12]]
 
 **参考资料**（查证日期：2026-09-19；适用 MySQL 8.4）
 
@@ -2350,9 +2367,19 @@ MySQL 架构是“Server 层 ＋ 存储引擎层”，一条语句按顺序穿�
 
    先止血：kill 掉失控的长查询、必要时限流入口；再治理：给这些 SQL 加索引／分页、给会话级 buffer 设合理值、约束 `max_connections`。
 
+3. **主存 100G，对 200G 的表全表扫描，会把内存吃光吗？**（面经实际出现；[[面经/途虎养车/一面/0001#Q12：主存 100G，对 200G 的表做全表扫描，会吃光内存吗？为什么？|MJ070 · 途虎养车 · 一面 · Q12]]）
+
+   不会。“表比内存大”不等于“扫描要把表装进内存”：
+
+   - 扫描是流式的：InnoDB 沿聚簇索引逐页读取、server 层逐行取回、按批发给客户端，不存在整表驻留。
+   - 缓冲池是固定容量的：`innodb_buffer_pool_size` 封顶，全扫描走热端插入防污染（8.0 的 medium-size 扫描另有分块策略），页进页出有界。
+   - 会涨的部分都有上限：连接级缓冲、排序缓冲、内部临时表超 `temptable_max_ram` 后转 InnoDB 临时表落盘（见 [[#MYSQL-035：MySQL 什么时候会使用内部临时表？|MYSQL-035]]）。
+   - 真正的风险在客户端：把结果集全 fetch 进应用内存才会打爆——大扫描要 LIMIT／流式消费（fetchSize）；扫描冲刷缓冲池带来的是性能抖动，不是内存耗尽。
+
 **面经来源**
 
 - [[面经/招银云创/二面/0001#Q07：数据库内存占用高，可能的原因是什么？|MJ056 · 招银云创 · 二面 · Q07]]
+- [[面经/途虎养车/一面/0001#Q12：主存 100G，对 200G 的表做全表扫描，会吃光内存吗？为什么？|MJ070 · 途虎养车 · 一面 · Q12]]
 
 **参考资料**（本次查证：2026-09-24）
 
@@ -2431,3 +2458,119 @@ MySQL 架构是“Server 层 ＋ 存储引擎层”，一条语句按顺序穿�
 
 - [MySQL 8.4：慢查询日志](https://dev.mysql.com/doc/refman/8.4/en/slow-query-log.html)
 - [MySQL 8.4：InnoDB 缓冲池配置](https://dev.mysql.com/doc/refman/8.4/en/innodb-buffer-pool.html)
+
+### MYSQL-035：MySQL 什么时候会使用内部临时表？
+
+**常见问法**
+
+- [[面经/途虎养车/一面/0001#Q11：MySQL 什么时候会用到内部临时表？|MJ070 · 途虎养车 · 一面 · Q11]]
+- EXPLAIN 里的 Using temporary 是什么意思？
+
+#### 面试回答
+
+结论：当排序／分组无法靠索引顺序完成、或要先物化中间结果时，优化器建内部临时表；执行计划 Extra 出现 `Using temporary` 就是信号。
+
+- 高频场景一：`GROUP BY` 与 `ORDER BY` 列集合不一致、分组列没有可用索引——先按分组列在临时表里聚合，再排序输出。
+- 高频场景二：`DISTINCT` 加排序、`UNION`（非 ALL）去重、派生表／CTE 物化、窗口函数按分区计算帧。
+- 存放位置：先建在内存（MySQL 8 默认 TempTable 引擎），超过阈值转磁盘上的 InnoDB 临时表——不是“内存表放不下就报错过”。
+- 验证手段：EXPLAIN ANALYZE 看实际行与临时开销；`Created_tmp_tables` 与 `Created_tmp_disk_tables` 的增量看内存／磁盘比例。
+
+#### 技术细节
+
+**版本差异要报准**
+
+- MySQL 8.0.16 起内部临时表默认改用 TempTable 引擎（此前 MEMORY 引擎不支持 BLOB／TEXT，含大字段查询直接落盘）； spills 到 InnoDB 的行为也随版本有调整，以所用版本文档为准。
+- 相关参数：`temptable_max_ram`（TempTable 内存上限，默认约 1G，可超出进程常规内存）、临时表超限后转 InnoDB（受 `internal_tmp_mem_storage_engine` 等控制）。
+
+**“用临时表”不等于“要优化”**
+
+- 小结果集的分组临时表成本很低；只有行数大、落盘、并发高时才值得动。
+- 磁盘临时表比例突然上升，先想两件事：有没有新上线的大分组 SQL；有没有字段类型变更（如 group 列变成 TEXT）导致内存路径失效。
+
+**消除手段按优先级**
+
+- 建索引让分组／排序走有序索引（能覆盖更佳）：`Using temporary`／`filesort` 双双消失。
+- 改写 SQL：`UNION` 明确改 `UNION ALL`＋业务去重；派生表能下推过滤就先下推。
+- 缩结果：少 `SELECT *`、分组前先过滤，别把过滤留给临时表之后。
+
+#### 深挖追问
+
+1. **`GROUP BY a ORDER BY b` 一个联合索引能救吗？**（面经实际出现的延伸；[[面经/途虎养车/一面/0001#Q11：MySQL 什么时候会用到内部临时表？|MJ070 · 途虎养车 · 一面 · Q11]]）
+
+   视条件而定：`WHERE a=?` 之外若按 b 排序，`(a,b)` 顺序扫描可免临时表；a 是范围分组、b 又要排序时通常仍需临时表——先看 EXPLAIN 再定，不背“一定能／一定不能”。
+
+2. **临时表会影响主从复制吗？**（补充练习）
+
+   内部临时表不写 binlog、不参与复制；但会话级 `CREATE TEMPORARY TABLE` 在 ROW 格式下同样不进 binlog，基于语句复制时会有差异（STMT 格式曾要求特殊处理），跨版本口径以文档为准。
+
+**面经来源**
+
+- [[面经/途虎养车/一面/0001#Q11：MySQL 什么时候会用到内部临时表？|MJ070 · 途虎养车 · 一面 · Q11]]
+
+**参考资料**（查证日期：2026-09-25；适用 MySQL 8.x）
+
+- [MySQL 8.4：Internal Temporary Table Use in MySQL](https://dev.mysql.com/doc/refman/8.4/en/internal-temporary-tables.html)
+- [MySQL 8.4：TempTable 存储引擎与 temptable_max_ram](https://dev.mysql.com/doc/refman/8.4/en/temporary-table-in-memory.html)
+
+**相关题目**
+
+[[#MYSQL-015：如何排查和优化慢 SQL？|MYSQL-015：执行计划里的临时表与排序]]、[[#MYSQL-016：多条件过滤并排序时如何设计联合索引？|MYSQL-016：索引消除 filesort／临时表]]
+
+### MYSQL-036：MySQL 怎么快速复制一张表（结构＋数据）？
+
+**常见问法**
+
+- [[面经/途虎养车/一面/0001#Q10：MySQL 如何快速复制一张表（结构＋数据）？|MJ070 · 途虎养车 · 一面 · Q10]]
+- 想把线上表拷一份到测试库，怎么做？
+
+#### 面试回答
+
+结论：两条常用语法各有缺口——`CREATE TABLE ... LIKE` 完整复制结构但不带数据；`CREATE TABLE ... SELECT` 带数据却丢索引；“结构＋数据”要组合两条语句。
+
+- 推荐组合：`CREATE TABLE t2 LIKE t1;` 再 `INSERT INTO t2 SELECT * FROM t1;`——主键、二级索引、AUTO_INCREMENT、charset 都随 LIKE 保留。
+- 陷阱版：`CREATE TABLE t2 AS SELECT * FROM t1` 把列降级为普通列，索引与主键丢失；它走的是快速装载路径，做备份表可以、做同构副本不行。
+- 只复制结构：`CREATE TABLE t2 SELECT * FROM t1 WHERE 1=0`（或 LIKE）；跨库／跨实例导结构用 `SHOW CREATE TABLE` 取 DDL 后改名执行。
+- 数据量大：低峰执行，或 mysqldump（`--no-create-info` 只导数据）／`SELECT ... INTO OUTFILE`＋`LOAD DATA`，比裸 INSERT SELECT 更可控。
+
+#### 技术细节
+
+**LIKE 复制了什么、没复制什么**
+
+- 复制：列定义、索引、约束、AUTO_INCREMENT 计数器值不复制（新表从初始状态起算）；表空间／加密属性随定义。
+- 不复制：外键定义与触发器（官方明确不复制），分区定义会随建表语句带上但外键缺失要自己补。
+
+**INSERT ... SELECT 的并发与锁**
+
+- 源表：InnoDB 会对读到的行加共享锁（配合默认隔离级别时可能范围锁），复制期间写源表可能被阻塞。
+- 目标表：非空目标表会拿独占元数据锁；大事务还会撑大 undo／binlog，从库回放延迟跟着上升——大表要么分批要么走离线导出。
+- 自增列冲突：目标表 AUTO_INCREMENT 会被插入推进，别假设它从 1 开始。
+
+**“快”的正确打开方式**
+
+- 同实例内最快：LIKE＋INSERT SELECT（无跨网络）。
+- 跨实例：mysqldump 单表（加 `--single-transaction` 避免锁表，依赖一致性快照）或 SELECT INTO OUTFILE＋LOAD DATA（注意 secure_file_priv 权限）。
+- 只想拿一份查询副本：临时表（`CREATE TEMPORARY TABLE`，会话结束自动清理）够用且不动 schema。
+
+#### 深挖追问
+
+1. **复制大表要不要关 binlog？**（补充练习）
+
+   复制表结构／备份场景不要凭手感关——binlog 是下游订阅与恢复链路的一部分（见 [[#MYSQL-022：MySQL 主从复制的数据同步流程是怎样的？|MYSQL-022：复制链路]]）；真要减量，用 `binlog_format=ROW` 下的行事件压缩或按库表过滤，并和 DBA 确认。
+
+2. **`LIKE` 出来的新表为什么 AUTO_INCREMENT 是 0？**（补充练习）
+
+   官方行为：`CREATE TABLE ... LIKE` 会保留该属性但计数器本身不继承当前值；插数据后从现有最大值继续，不需要“手工对齐”。
+
+**面经来源**
+
+- [[面经/途虎养车/一面/0001#Q10：MySQL 如何快速复制一张表（结构＋数据）？|MJ070 · 途虎养车 · 一面 · Q10]]
+
+**参考资料**（查证日期：2026-09-25；适用 MySQL 8.x）
+
+- [MySQL 8.4：CREATE TABLE ... LIKE 的复制范围（外键与触发器不复制）](https://dev.mysql.com/doc/refman/8.4/en/create-table-like.html)
+- [MySQL 8.4：CREATE TABLE ... SELECT 的限制](https://dev.mysql.com/doc/refman/8.4/en/create-table-select.html)
+- [MySQL 8.4：复制表与 mysqldump 用法](https://dev.mysql.com/doc/refman/8.4/en/copying-databases.html)
+
+**相关题目**
+
+[[#MYSQL-031：一条 SQL 语句的执行过程是怎样的？|MYSQL-031：执行链路与元数据锁]]、[[#MYSQL-022：MySQL 主从复制的数据同步流程是怎样的？|MYSQL-022：主从复制]]

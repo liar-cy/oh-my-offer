@@ -281,6 +281,7 @@ ThreadLocal 是给每个线程各自存一份变量值，用来放线程内的�
 - 用过什么锁？synchronized 底层是什么，和对象头什么关系？
 
 - 为什么选择加 synchronized 锁呢？而不是其它的锁？
+- synchronized 和 ReentrantLock 的区别？
 
 #### 面试回答
 
@@ -342,6 +343,7 @@ ThreadLocal 是给每个线程各自存一份变量值，用来放线程内的�
 - [[面经/北京某上市公司/一面/0001#Q05：synchronized 和 Lock 有什么区别？|MJ004 · 北京某上市公司 · 一面 · Q05]]
 - [[面经/帆软/二面/0001#Q14：分布式场景下乐观锁、synchronized 锁的注意点，死锁、锁超时释放怎么处理？|MJ023 · 帆软 · 二面 · Q14]]
 - [[面经/携程/一面/0001#Q07：synchronized 和 ReentrantLock 是干啥的，区别？|MJ028 · 携程 · 一面 · Q07]]
+- [[面经/途虎养车/一面/0001#Q04：synchronized 和 ReentrantLock 的区别|MJ070 · 途虎养车 · 一面 · Q04]]
 - [[面经/携程/一面/0001#Q08：synchronized 能锁住 String 和 Long 对象吗？|MJ028 · 携程 · 一面 · Q08]]
 - [[面经/传音控股/二面/0001#Q03：用过什么锁？synchronized 底层和对象头？|MJ030 · 传音控股 · 二面 · Q03]]
 - [[面经/美团/一面/0003#Q07：synchronized 和 ReentrantLock 的区别。|MJ037 · 美团 · 一面 · Q07]]

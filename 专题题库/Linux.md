@@ -1,8 +1,8 @@
 # Linux
 
 - 题号前缀：LINUX
-- 范围：Linux 如何查看 CPU 状态和系统负载？；select、poll、epoll 有什么区别？；Java 应用高 CPU 与负载异常排查。
-- 最近更新：2026-09-24
+- 范围：Linux 如何查看 CPU 状态和系统负载？；select、poll、epoll 有什么区别？；Java 应用高 CPU 与负载异常排查；服务变慢的分层诊断。
+- 最近更新：2026-09-25
 - 说明：按本库面经整理；补充练习不计入原始面试问题。个人经历答案为框架，技术版本以题内说明为准。
 
 ## 目录
@@ -11,6 +11,7 @@
 - [[#LINUX-002：select、poll、epoll 有什么区别？|LINUX-002：select、poll、epoll 有什么区别？]]
 
 - [[#LINUX-003：如何提取第四列 userid 并统计 Top10？|LINUX-003：如何提取第四列 userid 并统计 Top10？]]
+- [[#LINUX-004：服务程序明显变慢、运行吃力，怎么分层定位？|LINUX-004：服务变慢的分层定位]]
 
 ### LINUX-001：Linux 如何查看 CPU 状态和系统负载？
 
@@ -213,3 +214,69 @@ awk 'NF >= 4 {print $4}' input.txt | sort | uniq -c | sort -k1,1nr -k2,2 | head 
 
 - [GNU Awk 手册：字段提取](https://www.gnu.org/software/gawk/manual/gawk.html)
 - [GNU Coreutils：sort](https://www.gnu.org/software/coreutils/manual/html_node/sort-invocation.html)
+
+### LINUX-004：服务程序明显变慢、运行吃力，怎么分层定位？
+
+**常见问法**
+
+- [[面经/途虎养车/一面/0001#Q08：服务程序明显变慢、运行吃力，诊断思路是什么？|MJ070 · 途虎养车 · 一面 · Q08]]
+- 线上服务越来越卡，你怎么排查？
+
+#### 面试回答
+
+结论：按“系统层→进程层→JVM 层→依赖层”四层收敛，每一层都用命令拿证据；先止损（回滚／扩容／限流）再深挖根因。
+
+- 系统层：`uptime` 看 1／5／15 分钟负载趋势；`vmstat 1` 分 CPU（us／sy／wa）与运行队列；`iostat -x 1` 看磁盘 util／await；`free -h`＋`sar -r` 看内存与换页；`ss -s`、`mtr` 看网络。
+- 进程层：`top` 认进程，`top -Hp <pid>` 抓高 CPU 线程，线程号转 16 进制拿去 `jstack` 里对栈。
+- JVM 层：GC 嫌疑先 `jstat -gcutil <pid> 1000` 看 FGC 次数与耗时；热点用 Arthas `thread -n 3`／async-profiler 火焰图；内存看 `jmap -histo` 与 dump 分析。
+- 依赖层：慢 SQL（`SHOW PROCESSLIST`＋EXPLAIN）、下游 RT、连接池排队、缓存命中率——同时必问一句“最近有没有上线／改配置”，变慢大多对应一次变更。
+
+#### 技术细节
+
+**四层信号怎么互相印证**
+
+- load 高但 CPU 不高：先查 wa（IO 等待）与不可中断（D）状态进程，而不是盯着 us。
+- CPU 高但吞吐降：多半是 GC 线程在烧（`jstat` 或 GC 日志确认），不是业务算得多。
+- RT 全线变慢、CPU 反而低：等下游／等锁／连接池耗尽，看线程栈 WAITING／BLOCKED 占比与池指标。
+- 只有个别接口慢：回到代码路径与数据倾斜，系统层指标可能完全正常。
+
+**变更优先于玄学**
+
+- 时间线上先对齐三件事：发布时间、配置／开关变更、流量变化（活动、爬虫、上游重试风暴）。
+- 能回滚先回滚——恢复后拿着现场数据继续分析，比在故障中“边修边猜”快得多。
+
+**留证据的顺序**
+
+- 动手重启前，至少抓到：`top -Hp` 快照、一份 `jstack`、GC 日志片段、最近错误日志尾部；重启会销毁现场。
+- 生产常态要有的：监控与告警（SYS-050 的四层布控）、`-XX:+HeapDumpOnOutOfMemoryError`、慢 SQL 日志阈值。
+
+**常见口误**
+
+- 把 load average 说成 CPU 使用率。
+- 说“内存满一定 OOM”：OOM Killer、swap、页缓存回收是另一套机制，容器里还涉及 cgroup 限额（超的是容器 limit，不是物理内存）。
+
+#### 深挖追问
+
+1. **只有一台机器慢，其他正常，先查什么？**（补充练习）
+
+   先比对这台机器的差异项：是否被打了更多流量（负载均衡权重／热 key）、本地缓存命中率、磁盘或宿主机资源争抢（noisy neighbor）、有没有定时任务；再进同一套四层流程。
+
+2. **怎么区分“GC 停顿”和“代码慢”？**（补充练习）
+
+   把 GC 日志／`jstat` 的停顿时间与应用日志耗时做时间轴对齐。
+
+   - 整个应用同时卡、且与 FGC 时刻对齐：是 GC。
+   - 只有特定接口慢：是代码路径，走 trace 下钻（见 [[专题题库/系统设计#SYS-050：如何为项目设计服务与接口报错监控？哪些指标能快速感应异常、怎么评估影响面？|SYS-050：延迟与报错观测]]）。
+
+**面经来源**
+
+- [[面经/途虎养车/一面/0001#Q08：服务程序明显变慢、运行吃力，诊断思路是什么？|MJ070 · 途虎养车 · 一面 · Q08]]
+
+**参考资料**（查证日期：2026-09-25；命令以所用 Linux 发行版与 JDK 工具链为准）
+
+- [Red Hat: Troubleshooting 性能问题的通用方法（uptime/vmstat/iostat 系列）](https://www.redhat.com/en/blog/troubleshooting-performance-issues)
+- [OpenJDK: jstat／jstack 工具文档](https://docs.oracle.com/en/java/javase/17/docs/specs/man/jstat.html)
+
+**相关题目**
+
+[[#LINUX-001：Linux 如何查看 CPU 状态和系统负载？|LINUX-001：CPU 与负载查看]]、[[专题题库/MySQL#MYSQL-015：如何排查和优化慢 SQL？|MYSQL-015：慢 SQL 排查]]、[[专题题库/系统设计#SYS-012：服务器宕机如何发现与恢复，Agent 宕机有何不同？|SYS-012：宕机发现与恢复]]
