@@ -91,6 +91,7 @@
 - ConcurrentHashMap 的实现原理是什么？
 - ConcurrentHashMap 在项目中怎么用的？key 和 value 存的什么？
 - ConcurrentHashMap 的锁是怎么加的？锁粒度是什么？
+- 谈谈 ConcurrentHashMap 的底层实现。
 
 #### 面试回答
 
@@ -129,6 +130,7 @@
 - [[面经/字节/一面/0001#Q19：ConcurrentHashMap 的实现原理是什么？|MJ011 · 字节 · 一面 · Q19]]
 - [[面经/收钱吧/一面/0001#Q10：ConcurrentHashMap 在项目中如何使用？key 和 value 存什么？|MJ068 · 收钱吧 · 一面 · Q10]]
 - [[面经/海信/电话面/0001#Q07：ConcurrentHashMap 的锁是怎么加的？|MJ073 · 海信 · 电话面 · Q07]]
+- [[面经/字节/三面/0002#Q09：谈谈 ConcurrentHashMap 的底层实现|MJ077 · 字节 · 三面 · Q09]]
 
 **参考资料**（查证：2026-09-13；适用版本见正文）
 
