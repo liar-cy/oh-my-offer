@@ -1,13 +1,14 @@
 # Spring
 
 - 题号前缀：SPRING
-- 范围：Spring Boot 有哪些关键特性；Spring Boot 自动装配的原理是什么？；IoC 是什么，容器如何创建和管理 Bean？；AOP 的原理是什么，为什么自调用可能失效？；@Transactional 何时不生效，如何正确调用事务方法？；@Resource 与 @Autowired 有什么区别，如何按名称注入？；Spring 如何处理循环依赖，如何解决？；什么是懒加载，@Lazy 在哪里生效？；@Transactional 方法里新开线程是否还在同一事务；常用注解及其处理者；@Autowired 的注入流程与反射实现；Bean 的完整生命周期。
-- 最近更新：2026-09-24
+- 范围：Spring Boot 有哪些关键特性；Spring Boot 自动装配的原理是什么？；IoC 是什么，容器如何创建和管理 Bean？；AOP 的原理是什么，为什么自调用可能失效？；@Transactional 何时不生效，如何正确调用事务方法？；@Resource 与 @Autowired 有什么区别，如何按名称注入？；Spring 如何处理循环依赖，如何解决？；什么是懒加载，@Lazy 在哪里生效？；@Transactional 方法里新开线程是否还在同一事务；常用注解及其处理者；@Autowired 的注入流程与反射实现；Bean 的完整生命周期；基于 Boot 开发会用到的工具链。
+- 最近更新：2026-09-25
 - 说明：按本库面经整理；补充练习不计入原始面试问题。个人经历答案为框架，技术版本以题内说明为准。
 
 ## 目录
 
 - [[#SPRING-012：Spring Boot 有哪些关键特性？|SPRING-012：Spring Boot 有哪些关键特性？]]
+- [[#SPRING-013：基于 Spring Boot 开发会用到哪些工具？|SPRING-013：基于 Spring Boot 开发会用到哪些工具？]]
 - [[#SPRING-001：Spring Boot 自动装配的原理是什么？|SPRING-001：Spring Boot 自动装配的原理是什么？]]
 - [[#SPRING-002：IoC 是什么，容器如何创建和管理 Bean？|SPRING-002：IoC 是什么，容器如何创建和管理 Bean？]]
 - [[#SPRING-003：AOP 的原理是什么，为什么自调用可能失效？|SPRING-003：AOP 的原理是什么，为什么自调用可能失效？]]
@@ -782,3 +783,78 @@ Spring 的懒加载，就是把 Bean 的创建从“容器启动时”推迟到�
 
 - [Spring Boot Overview（官方文档：features／starters／Actuator）](https://docs.spring.io/spring-boot/reference/)
 - [Spring Boot 自动配置](https://docs.spring.io/spring-boot/reference/using/auto-configuration.html)
+
+### SPRING-013：基于 Spring Boot 开发会用到哪些工具？
+
+**常见问法**
+
+- 基于 SpringBoot 做开发的过程中，会涉及用到哪些工具？
+- 你平时开发一个 Boot 项目，工作流里都有什么？
+
+#### 面试回答
+
+结论：按开发流程分组讲，每样带一句用途——面试官要听的是工作流，不是工具清单。
+
+- 构建与依赖：Maven／Gradle；依赖冲突用 `mvn dependency:tree` 看树，用 `exclusion`／`dependencyManagement` 收敛版本。
+- 编码与热反馈：IDEA、Lombok 省样板代码、`spring-boot-devtools` 做类路径变更自动重启。
+- 配置与接口：`application.yml`＋profile 分环境、`@ConfigurationProperties` 绑配置、springdoc／Knife4j 出 OpenAPI 文档、Postman 或 curl 联调。
+- 数据层：MySQL 客户端、HikariCP（Boot 默认连接池）、MyBatis／MyBatis-Plus 与 SQL 日志、MyBatis Generator 出基础 CRUD。
+- 中间件与可观测：redis-cli／RDME 看缓存、MQ 管理控制台看堆积、Actuator 暴露健康与指标给监控系统。
+- 测试与定位：JUnit 5＋Mockito＋Testcontainers、Logback 日志、线上定位用 Arthas、性能问题用 JDK 自带的 jcmd／JFR 或 VisualVM、压测用 JMeter。
+- 交付：Git＋分支规范、Docker 起本地依赖、`spring-boot-maven-plugin` 打可执行 jar 进 CI。
+
+#### 技术细节
+
+**每样工具解决 Boot 开发的哪一步**
+
+- devtools：自动重启比冷启动快，是因为它用两套类加载器——不变的三方库留在 base 类加载器，只重建 restart 类加载器；IDEA 里要触发它得真正执行 Build（保存文件不会）。
+- devtools 还会顺手改掉一批开发期默认值，例如把模板与静态资源缓存关掉、开 H2 控制台；打包运行时这些自动失效，所以它不会把「缓存关闭」带到生产。
+- Actuator：给探针和监控用的端点集合（health、info、metrics 等）。默认只暴露 `health`，其余要靠 `management.endpoints.web.exposure.include` 显式打开。
+- 配置绑定：`@ConfigurationProperties` 比一串 `@Value` 好维护，配合配置元数据处理器还能在 IDE 里得到 yml 提示。
+- Testcontainers：把 MySQL／Redis／Kafka 以容器方式拉起来跑集成测试，解决「本地过了 CI 挂」「mock 与真实行为不一致」两类问题。
+
+**版本与选型差异**
+
+- 接口文档：Boot 3／Spring 6（jakarta 命名空间）走 springdoc-openapi；老的 springfox 不兼容，别在新项目里选它。
+- Boot 3.x 基线 JDK 17；当前官方文档已把 devtools 内嵌的 LiveReload 标为 deprecated（Boot 4.1.0 起），新项目别再依赖它刷新浏览器。
+- JDK 自带诊断工具（jcmd、JFR、jstack）不需要额外装 agent，面试里能说出这一条比只报第三方工具更稳。
+
+**安全与生产边界（最容易被追问）**
+
+- Actuator 端点默认收敛，只开需要的；`env`／`beans`／`heapdump` 这类不要暴露到公网，走管理端口＋鉴权。
+- devtools 不参与生产运行，也不要把依赖传递给下游模块（Maven 标 `optional`，Gradle 用 `developmentOnly`）。
+- Arthas 这类在线诊断工具在生产上是「读」为主，但要走审批和录屏，别在高峰期随便 `redefine` 热替换线上类。
+
+**容易被挑刺的说法**
+
+- 别把「用过的工具」说成「懂的原理」：报 Lombok 就会被问编译期注解处理，报 Arthas 就会被问它怎么做字节码增强，报不动的就不要列。
+- 清单不要念成流水账：挑 2～3 个能讲清「为什么用它、替我解决了什么」的展开，其余一句带过。
+
+#### 深挖追问
+
+1. **Actuator 和 Micrometer 是什么关系？**（补充练习）
+
+   Actuator 负责暴露端点与健康检查，Micrometer 负责以统一 API 采集指标、再对接 Prometheus／Datadog 等后端；两者常配合出现，但不是同一个东西。
+
+2. **项目里怎么定位一次线上 CPU 飙高？**（补充练习）
+
+   通用链路是：`top` 找进程 → `top -Hp` 找线程 → 线程号转 16 进制 → `jstack` 或 Arthas `thread` 定位栈；再结合 GC 日志与最近发布判断是死循环、频繁 Full GC 还是正则回溯。
+
+3. **为什么不用 IDE 直接跑，要用 Maven 插件打包？**（补充练习）
+
+   CI 与本地行为要一致；`spring-boot-maven-plugin` 的 repackage 产出含内嵌容器与启动类的可执行 jar，`java -jar` 即可运行，也是容器镜像里最常见的入口。
+
+**面经来源**
+
+- [[面经/阳光电源/一面/0001#Q07：基于 Spring Boot 开发的过程中，会用到哪些工具？|MJ065 · 阳光电源 · 一面 · Q07]]
+
+**参考资料**（查证日期：2026-09-25）
+
+- [Spring Boot 文档：Developer Tools（自动重启、属性默认值、生产禁用）](https://docs.spring.io/spring-boot/reference/using/devtools.html)
+- [Spring Boot 文档：Actuator Endpoints（默认仅暴露 health 与 exposure 配置）](https://docs.spring.io/spring-boot/reference/actuator/endpoints.html)
+- [Spring Boot 文档：Running your application（打包运行与构建插件）](https://docs.spring.io/spring-boot/reference/using/running-your-application.html)
+- [springdoc 官方站点（OpenAPI 3 与 Spring Boot 集成）](https://springdoc.org/)
+- [Apache Maven Dependency Plugin：tree 目标](https://maven.apache.org/plugins/maven-dependency-plugin/tree-mojo.html)
+- [MyBatis Generator 文档](https://mybatis.org/generator/)
+- [Alibaba Arthas 项目主页](https://github.com/alibaba/arthas)
+- [Apache JMeter 官网](https://jmeter.apache.org/)
