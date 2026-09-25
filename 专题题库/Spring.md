@@ -10,6 +10,7 @@
 - [[#SPRING-012：Spring Boot 有哪些关键特性？|SPRING-012：Spring Boot 有哪些关键特性？]]
 - [[#SPRING-013：基于 Spring Boot 开发会用到哪些工具？|SPRING-013：基于 Spring Boot 开发会用到哪些工具？]]
 - [[#SPRING-014：Spring Session 中存储的是什么数据？|SPRING-014：Spring Session 存储内容与工作机制]]
+- [[#SPRING-015：如何在 Spring 中实现一个简单的事务？|SPRING-015：声明式与编程式事务]]
 - [[#SPRING-001：Spring Boot 自动装配的原理是什么？|SPRING-001：Spring Boot 自动装配的原理是什么？]]
 - [[#SPRING-002：IoC 是什么，容器如何创建和管理 Bean？|SPRING-002：IoC 是什么，容器如何创建和管理 Bean？]]
 - [[#SPRING-003：AOP 的原理是什么，为什么自调用可能失效？|SPRING-003：AOP 的原理是什么，为什么自调用可能失效？]]
@@ -212,6 +213,7 @@ Spring AOP 的做法是在目标对象外面套一层代理，把事务、日志
 
 - @Transactional 注解什么时候失效？
 - 如何在非方法内调用另一个事物方法？
+- Test 类里 a（无注解）调用加了 @Transactional 的 b，事务生效吗？a 也加上呢？
 
 #### 面试回答
 
@@ -267,6 +269,8 @@ Spring 声明式事务默认是靠 AOP 代理拦截方法调用的，一句话�
 
 - [[面经/北京某上市公司/一面/0001#Q08：@Transactional 何时失效，如何从其他入口调用事务方法？|MJ004 · 北京某上市公司 · 一面 · Q08]]
 - [[面经/京东零售/一面/0001#Q10：如何使用 Spring 控制事务？|MJ034 · 京东零售 · 一面 · Q10]]
+- [[面经/淘天/一面/0002#Q21：如何在 Spring 中实现一个简单的事务？|MJ071 · 淘天 · 一面 · Q21]]
+- [[面经/淘天/一面/0002#Q22：Test 类里 a 调用加了 @Transactional 的 b，事务生效吗？a 也加上呢？|MJ071 · 淘天 · 一面 · Q22]]
 
 **参考资料**（本次查证：2026-09-19）
 
@@ -916,3 +920,66 @@ Spring 的懒加载，就是把 Bean 的创建从“容器启动时”推迟到�
 **相关题目**
 
 [[专题题库/计算机网络#NET-012：Cookie、Session 和 Token 有什么区别？|NET-012：会话三件套]]、[[专题题库/Java基础#JAVA-020：二进制序列化和 JSON 序列化有什么差异？各自适配什么场景？|JAVA-020：序列化选型]]
+
+### SPRING-015：如何在 Spring 中实现一个简单的事务？
+
+**常见问法**
+
+- [[面经/淘天/一面/0002#Q21：如何在 Spring 中实现一个简单的事务？|MJ071 · 淘天 · 一面 · Q21]]
+- 除了 @Transactional，还能怎么控制事务？
+
+#### 面试回答
+
+结论：声明式最省事——方法加 `@Transactional`，边界由代理管理；要精确控制就用编程式 `TransactionTemplate`，边界写在代码里看得见。
+
+- 声明式三件配套：`@EnableTransactionManagement`（Boot 自动装配已带）、数据源对应的事务管理器（`DataSourceTransactionManager`）、方法注解；MyBatis／JPA 场景事务管理器由 starter 配好。
+- 关键属性：`propagation`（默认 REQUIRED）、`isolation`、`timeout`、`readOnly`、`rollbackFor`——受检异常默认不回滚，接口声明了 checked 异常时必须显式指定。
+- 编程式：注入 `PlatformTransactionManager` 构造 `TransactionTemplate`，`execute(status -> {...})` 里抛 RuntimeException 自动回滚，或 `status.setRollbackOnly()` 主动标记。
+- 收尾一句：两种方式底层是同一套抽象（事务定义＋事务管理器＋具体管理器），`@Transactional` 只是把调用模板藏进了拦截器。
+
+#### 技术细节
+
+**最小可运行清单**
+
+- 依赖 `spring-tx`＋数据源；配置类上 `@EnableTransactionManagement`；需要时 `proxyTargetClass=true` 切 CGLIB。
+- 生效前提是调用经过代理：同类自调用、`final`／`private` 方法、异常被 catch 吞掉都会“看起来加了没生效”（SPRING-004 全清单）。
+
+**Test 类这种场景怎么判**
+
+- JUnit 里 `new` 出来的对象、或 `this.b()` 自调用，都没有代理——b 上的注解不生效；a 加不加注解都不改变这一点。
+- 正确做法：把被测方法放进 `@Service` Bean，测试里 `@Autowired` 注入后调用。
+- 另有一套东西要分清：测试方法加 Spring Test 的 `@Transactional`，是整个测试跑在托管事务里、默认结束回滚——这是测试回滚特性，不是业务代理生效的证据。
+
+**TransactionTemplate 的适用信号**
+
+- 事务段要刻意收窄：把 RPC／发 MQ／缓存写挪出 `execute` 块，事务时长即可测——JUC-023 的库存分桶就是这种写法。
+- 传播行为想临时改：新建 template 实例设 `PROPAGATION_REQUIRES_NEW`，比在业务方法上叠注解清晰。
+- 手动回滚标记不抛异常、调用方无感——适合“失败记日志、外层决定是否补偿”的流程。
+
+**底层三件套（被追问“原理”时给这个）**
+
+- `TransactionDefinition`（属性集合）→ `PlatformTransactionManager`（getTransaction／commit／rollback 的统一接口）→ 具体管理器绑定资源（JDBC 连接、JPA EntityManager）。
+- 代理入口是 `TransactionInterceptor`：开启事务→执行方法→按异常决定提交／回滚→清理与同步。
+
+#### 深挖追问
+
+1. **一个方法里想“部分回滚”怎么做？**（补充练习）
+
+   拆成两个事务：内层 `REQUIRES_NEW` 独立提交（日志／记账必留），外层失败不影响内层；或用 TransactionTemplate 分两段手动控制——不存在“单个事务回滚一半”。
+
+2. **readOnly=true 有什么用？**（补充练习）
+
+   它是给持久层与数据库的提示（Hibernate flush 模式、连接设为只读），能把优化交给引擎并挡住误写；它本身不提供任何隔离或锁语义，别当并发保护说。
+
+**面经来源**
+
+- [[面经/淘天/一面/0002#Q21：如何在 Spring 中实现一个简单的事务？|MJ071 · 淘天 · 一面 · Q21]]
+
+**参考资料**（查证日期：2026-09-25；适用 Spring Framework 6.x 文档口径）
+
+- [Spring Framework：Transaction Management（声明式与编程式、属性清单）](https://docs.spring.io/spring-framework/reference/data-binding/transaction.html)
+- [Spring Framework：@Transactional 的代理机制与自调用限制](https://docs.spring.io/spring-framework/reference/data-binding/transaction/annotation-driven.html)
+
+**相关题目**
+
+[[#SPRING-004：@Transactional 何时不生效，如何正确调用事务方法？|SPRING-004：失效场景与修法]]、[[#SPRING-003：AOP 的原理是什么，为什么自调用可能失效？|SPRING-003：代理机制]]
