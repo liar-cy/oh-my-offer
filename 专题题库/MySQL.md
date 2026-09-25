@@ -842,6 +842,7 @@ WHERE id = :batch_id AND stock >= :quantity;
 - [MySQL 8.4，联合索引](https://dev.mysql.com/doc/refman/8.4/en/multiple-column-indexes.html)
 - [MySQL 8.4，聚簇与二级索引](https://dev.mysql.com/doc/refman/8.4/en/innodb-index-types.html)
 - [MySQL 8.4，MVCC 与二级索引可见性检查](https://dev.mysql.com/doc/refman/8.4/en/innodb-multi-versioning.html)
+- [[面经/京东TET/二面/0001#Q13：MySQL 索引的作用；什么场景需要建索引？建立索引要考虑哪些因素？|MJ089 · 京东 TET · 二面 · Q13]]
 
 #### 深挖追问
 

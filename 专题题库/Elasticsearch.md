@@ -212,6 +212,7 @@
 
 - [Elasticsearch 文档：Search after／请求缓存／分片与副本](https://www.elastic.co/guide/en/elasticsearch/reference/current/paginate-search-results.html)
 - [Alibaba canal 项目文档（binlog 订阅同步）](https://github.com/alibaba/canal)
+- [[面经/京东TET/二面/0001#Q14：项目中 ES 主要用于什么场景、解决什么问题？|MJ089 · 京东 TET · 二面 · Q14]]
 
 ### ES-003：ES 索引的分片和副本一般怎么设置？
 

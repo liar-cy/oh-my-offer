@@ -283,6 +283,7 @@
 - Java 的 List 有哪些实现？分别适合哪些应用场景？
 - ArrayList 和 LinkedList 有什么区别，什么时候用哪个？
 - 在对集合的 for 循环或者 for-each 循环中执行删除操作，会有什么问题吗？
+- 手写：删除 List＜Student＞ 中 number 为 007 的学生记录
 
 #### 面试回答
 
@@ -333,10 +334,34 @@
 
    `for-each` 中直接 `list.remove` 会触发 fail-fast 抛 CME；正确写法是迭代器的 `remove()`、或 JDK 8 的 `removeIf`、或倒序按下标删。ArrayList 与 LinkedList 都适用这条契约。
 
+4. **手写：从 `List＜Student＞` 里删掉 `number` 为 `"007"` 的记录怎么写？**（面经实际出现；[[面经/用友/一面/0002#Q05：现场代码题：删除 List＜Student＞ 中 number 为 007 的记录|MJ090 · 用友 · 一面 · Q05]]）
+
+   一行首选，两种等价写法要能马上跟上：
+
+   ```java
+   students.removeIf(s -> "007".equals(s.getNumber()));   // 首选：一次遍历，删全部匹配
+
+   Iterator<Student> it = students.iterator();             // 只要删第一条时用它，命中后 break
+   while (it.hasNext()) if ("007".equals(it.next().getNumber())) { it.remove(); break; }
+
+   for (int i = students.size() - 1; i >= 0; i--) {        // 倒序下标：不跳元素
+       if ("007".equals(students.get(i).getNumber())) students.remove(i);
+   }
+   ```
+
+   这题真正的区分度在三个细节，写完要主动说出来：
+
+   - `"007"` 放前面调 `equals`：`number` 可能为 null，常量在前免判空；反过来写就是 NPE。
+   - 学号是字符串语义：别 `Integer.parseInt` 再比 7，前导零会丢，`"007"` 与 `"7"` 是两个学号。
+   - 传进来的列表未必可改：`Arrays.asList(...)` 是定长视图、`List.of(...)` 是不可变，删元素抛 `UnsupportedOperationException`；先 `new ArrayList<>(list)` 包一层再动手。
+
+   口径要先问：删全部还是只删第一条、要不要把被删记录返回给调用方。要返回就先收集再删，别在 `removeIf` 的 lambda 里塞副作用。
+
 **面经来源**
 
 - [[面经/海信/电话面/0001#Q02：Java 的 List 有哪些实现？分别适合哪些应用场景？|MJ073 · 海信 · 电话面 · Q02]]
 - [[面经/浙江大华/电话面/0001#Q05：ArrayList 和 LinkedList 的区别|MJ080 · 浙江大华 · 电话面 · Q05]]
+- [[面经/用友/一面/0002#Q05：现场代码题：删除 List＜Student＞ 中 number 为 007 的记录|MJ090 · 用友 · 一面 · Q05]]
 - [[面经/用友/一面/0002#Q06：在集合的 for 或 for-each 循环中执行删除操作，会有什么问题？|MJ090 · 用友 · 一面 · Q06]]
 
 **参考资料**（本次查证：2026-09-25）
