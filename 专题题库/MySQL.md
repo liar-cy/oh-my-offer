@@ -1,8 +1,8 @@
 # MySQL
 
 - 题号前缀：MYSQL
-- 范围：一条 SQL 的执行过程（连接器／分析器／优化器／执行器／存储引擎）、SQL 子句逻辑执行顺序、事务与 ACID 实现机制、日志、索引（含 B+ 树导航与对 B 树对比、容量估算）、锁与并发控制、连接池、连接失败与内存占用高的故障排查、存储引擎、数据类型、MVCC、慢 SQL 与数据库调优分层清单、内部临时表与复制表等 DDL／DML 实操、多单列索引组合等值查询的优化器取舍、死锁的排查与处理。
-- 最近更新：2026-09-25
+- 范围：一条 SQL 的执行过程（连接器／分析器／优化器／执行器／存储引擎）、SQL 子句逻辑执行顺序、事务与 ACID 实现机制、日志、索引（含 B+ 树导航与对 B 树对比、容量估算）、锁与并发控制、连接池、连接失败与内存占用高的故障排查、存储引擎、数据类型、MVCC、慢 SQL 与数据库调优分层清单、内部临时表与复制表等 DDL／DML 实操、多单列索引组合等值查询的优化器取舍、死锁的排查与处理、join 的种类与连接结果条数推算、分组计数与取最大（前 N）分组。
+- 最近更新：2026-09-26
 - 说明：按本库面经整理；补充练习不计入原始面试问题。个人经历答案为框架，技术版本以题内说明为准。
 
 ## 目录
@@ -57,6 +57,8 @@
 - [[#MYSQL-036：MySQL 怎么快速复制一张表（结构＋数据）？|MYSQL-036：复制表的两种语法与陷阱]]
 - [[#MYSQL-037：MySQL 死锁怎么排查和处理？|MYSQL-037：死锁排查与处理]]
 - [[#MYSQL-038：多个列各建单列索引、组合等值查询时，优化器怎么选命中哪个？|MYSQL-038：多单列索引组合查询时优化器怎么选]]
+- [[#MYSQL-039：MySQL 的 join 有哪几种，连接结果条数怎么推算？|MYSQL-039：MySQL 的 join 有哪几种，连接结果条数怎么推算？]]
+- [[#MYSQL-040：如何统计分组计数并取出最大（或前 N）的分组？|MYSQL-040：如何统计分组计数并取出最大（或前 N）的分组？]]
 
 ### MYSQL-001：MySQL 事务有哪些隔离级别？
 
@@ -414,6 +416,7 @@ InnoDB 常用的索引用 B+ 树，我会分三层讲：
 - [[面经/点点互动/一面/0001#Q20：MySQL 索引的底层实现是什么？B+ 树如何找到叶子节点，和 B 树有什么区别？|MJ064 · 点点互动 · 一面 · Q20]]
 - [[面经/小米/一面/0001#Q08：为什么 InnoDB 选择 B+ 树作为索引？|MJ078 · 小米 · 一面 · Q08]]
 - [[面经/招银网络科技/一面/0001#Q11：MySQL 的存储引擎以及对应的索引结构|MJ082 · 招银网络科技 · 一面 · Q11]]
+- [[面经/京东TET/二面/0001#Q13：MySQL 索引的作用；什么场景需要建索引？建立索引要考虑哪些因素？|MJ089 · 京东 TET · 二面 · Q13]]
 
 **参考资料**（本次查证：2026-09-12）
 
@@ -770,6 +773,7 @@ WHERE id = :batch_id AND stock >= :quantity;
 - 主键等值查询时，`select *` 和 `select id` 效率一样吗？为什么？
 
 - MySQL 的覆盖索引、前缀索引、索引下推分别是什么？
+- 谈谈 MySQL 索引的作用，什么场景下需要建立索引？建立索引需要考虑哪些因素？
 
 #### 面试回答
 
@@ -813,6 +817,18 @@ WHERE id = :batch_id AND stock >= :quantity;
 1. **覆盖索引是不是一定完全不访问聚簇记录？**（补充练习）
 
    从所需列看不必回表取额外字段，但 InnoDB 的事务可见性检查等仍可能访问聚簇记录；口述时说“通常减少回表”，不作绝对保证。
+
+2. **什么场景需要建立索引，建索引要考虑哪些因素？**（面经实际出现；[[面经/京东TET/二面/0001#Q13：MySQL 索引的作用；什么场景需要建索引？建立索引要考虑哪些因素？|MJ089 · 京东 TET · 二面 · Q13]]）
+
+   先说作用：索引把“全表扫描找行”变成“按有序结构定位”，同时能承担唯一约束与覆盖查询。
+
+   - 该建：高频 WHERE／JOIN／ORDER BY 且过滤后结果远小于全表的列（选择性高）。
+   - 该建：需要业务唯一约束的列（订单号、手机号）、外键关联列，以及分页里要排序的列。
+   - 不该建：小表（全扫更划算）、只被更新很少被查的列、选择性极差的列（性别、状态只有几个值）、前缀重复度高的长文本（要建就用前缀索引）。
+   - 成本侧：每个二级索引都要在增删改时同步维护，还会占缓冲池；索引不是越多越好，写密集表要定期用系统表核对未使用索引。
+   - 设计侧：多条件查询按“等值列在前、区分度高在前”排联合索引列序，顺带覆盖排序避免额外临时表；查询列尽量落在索引内免回表。
+   - 失效侧：函数包列、隐式类型转换、前导模糊 `LIKE '%x'`、对索引列做运算，都会让前面的设计全部作废——报设计前先确认谓词形态。
+
 
 **面经来源**
 
@@ -2745,3 +2761,180 @@ MySQL 架构是“Server 层 ＋ 存储引擎层”，一条语句按顺序穿�
 **相关题目**
 
 [[#MYSQL-024：多个字段单独建索引和建联合索引有什么区别？|MYSQL-024：单列索引与联合索引]]、[[#MYSQL-018：什么是最左前缀匹配法则，什么时候会失效？|MYSQL-018：索引失效场景]]、[[#MYSQL-015：如何排查和优化慢 SQL？|MYSQL-015：慢 SQL 排查]]
+
+### MYSQL-039：MySQL 的 join 有哪几种，连接结果条数怎么推算？
+
+**常见问法**
+
+- [[面经/用友/一面/0002#Q08：MySQL 的 join 有几种？给定 T1、T2 数据，inner join 与 left join 各返回几条？|MJ090 · 用友 · 一面 · Q08]]
+- MySQL 的 join 操作有几种？
+- 给两张表的数据，inner join 和 left join 分别返回几条？
+
+#### 面试回答
+
+分两个维度答，别混着背：
+
+- 语法种类：`INNER JOIN`、`LEFT [OUTER] JOIN`、`RIGHT [OUTER] JOIN`；MySQL 没有 `FULL OUTER JOIN`，要并集得用 left join union right join 模拟。
+- 实现种类（优化器视角）：连接算法有 Nested-Loop、Block Nested-Loop、Batched Key Access，MySQL 8.0.18 起等值连接还可用 Hash Join；走哪种主要看内表连接列有没有索引。
+- 推算条数只需一条规则：inner join 只留匹配上的组合，left join 保留左表全部行、匹配不到补 NULL。
+- 匹配依据是 on 里写的那一列，跟同名的另一列无关——这是给定数据算条数时最容易算错的地方。
+
+#### 技术细节
+
+**每种连接保留哪些行**
+
+| 连接 | 保留的行 | 匹配不到的表现 |
+| --- | --- | --- |
+| `INNER JOIN` | 只保留两表都匹配上的组合 | 直接不出现 |
+| `LEFT JOIN` | 左表全部行 | 右表所有列补 NULL |
+| `RIGHT JOIN` | 右表全部行 | 左表所有列补 NULL |
+| `CROSS JOIN` | 笛卡尔积，m × n 行 | 无匹配概念 |
+| `FULL OUTER JOIN` | MySQL 不支持 | 用 UNION 模拟 |
+
+**驱动表怎么定**
+
+- `LEFT JOIN` 的驱动表固定是左表：优化器不能把顺序换成“先扫右表”，否则“左表全保留”的语义就破了。
+- `RIGHT JOIN` 是镜像写法，优化器通常会改写成交换表序的 left join。
+- `INNER JOIN` 没有保留要求，优化器自由挑驱动表（一般选结果集小的先驱动）。
+
+**一对多匹配会把行数放大**
+
+- 左表一行匹配到右表 k 行，结果就是 k 行；算条数时不能按“匹配了几个 key”，要按“匹配了几行”。
+- 所以统计类查询里 join 后再 `COUNT(*)` 容易翻倍，需要 `COUNT(DISTINCT ...)` 或先聚合再连接。
+
+**on 与 where 的区别（left join 场景必考点）**
+
+- 过滤条件写在 `ON` 里：先按条件匹配，未匹配的左表行仍保留、右表列为 NULL。
+- 过滤条件写在 `WHERE` 里：先生成连接结果再过滤，右表 NULL 行会被条件筛掉，left join 退化成 inner join。
+- 想对左表本身加条件，写在 `WHERE` 才是预期语义。
+
+#### 深挖追问
+
+1. **具体例子：T1(id) 是 1、2、3，T2(id, aid) 是 (1, 1) 与 (3, 2)，两条查询各返回几条？**（面经实际出现；[[面经/用友/一面/0002#Q08：MySQL 的 join 有几种？给定 T1、T2 数据，inner join 与 left join 各返回几条？|MJ090 · 用友 · 一面 · Q08]]）
+
+   连接条件是 `T1.id = T2.aid`，所以看 T2 的 aid 列，值集合是 {1, 2}。
+
+   - `inner join`：aid=1 命中 T1.id=1、aid=2 命中 T1.id=2 → 2 条。
+   - `left join`：以 T1 的 3 行为基准，T1.id=3 没有对应 aid → 补 NULL → 3 条。
+   - 陷阱就在 T2 第二行的 id=3：它靠 aid=2 参与匹配，跟 T1.id=3 无关。
+
+2. **为什么大数据量 join 反而可能被优化器拆成两次查询？**（补充练习）
+
+   驱动表结果集大、被驱动表没索引时，Nested-Loop 的代价是乘积级；Block Nested-Loop 与 Hash Join 用内存换 IO，仍受 `join_buffer_size` 限制，放不下就要多轮扫描。所以生产上常见做法是字段冗余（省掉 join）或在应用层分批按主键查。
+
+3. **MySQL 8.0.18 的 Hash Join 改变了什么？**（补充练习）
+
+   在此之前，两表都没有索引的等值连接只能走 Block Nested-Loop（默认 `join_buffer_size` 256KB，大表要反复扫）；8.0.18 起等值连接可用 Hash Join——对小建表、大 probe 大表，代价降为线性。口径要报版本，8.0.18 之前这句话不成立。
+
+**面经来源**
+
+- [[面经/用友/一面/0002#Q08：MySQL 的 join 有几种？给定 T1、T2 数据，inner join 与 left join 各返回几条？|MJ090 · 用友 · 一面 · Q08]]
+
+
+**参考资料**（本次查证：2026-09-26；适用 MySQL 8.4）
+
+- [MySQL 8.4：Nested-Loop Join Algorithms](https://dev.mysql.com/doc/refman/8.4/en/nested-loop-joins.html)
+- [MySQL 8.4：Join Order Optimization（含 Hash Join 与 8.0.18 起适用说明）](https://dev.mysql.com/doc/refman/8.4/en/join-order-optimization.html)
+- [MySQL 8.4：Outer Join / FULL OUTER JOIN 的模拟写法](https://dev.mysql.com/doc/refman/8.4/en/outer-join-optimization.html)
+
+**相关题目**
+
+[[#MYSQL-040：如何统计分组计数并取出最大（或前 N）的分组？|MYSQL-040：分组计数取最值]]、[[#MYSQL-002：如何查询所有已记录科目成绩都大于 80 的人员？|MYSQL-002：分组与 HAVING]]、[[#MYSQL-035：MySQL 什么时候会使用内部临时表？|MYSQL-035：内部临时表]]
+
+### MYSQL-040：如何统计分组计数并取出最大（或前 N）的分组？
+
+**常见问法**
+
+- [[面经/用友/一面/0002#Q09：SQL：统计每个学校面试总人数；再找出人数最多的学校|MJ090 · 用友 · 一面 · Q09]]
+- 一张表有学号、姓名、学校和面试时间，统计每个学校面试的总人数。
+- 还是这张表，找出面试总人数最多的学校，返回学校名和人数。
+
+#### 面试回答
+
+两步都靠同一个分组，第二问只是在结果上排序取头部：
+
+- 每校人数：`SELECT school, COUNT(*) FROM T GROUP BY school`。
+- 人数最多的学校：在上面加 `ORDER BY COUNT(*) DESC LIMIT 1`。
+- 一句前提确认：这题的“人数”要看口径——`COUNT(*)` 数的是记录条数，一个人多条面试记录会被重复计入；要人数就用 `COUNT(DISTINCT id)`。
+- 并列最多时 `LIMIT 1` 只返回一个，要全部并列项得用子查询或窗口函数。
+
+#### 技术细节
+
+**两条语句**
+
+```sql
+-- 每校面试总人数
+SELECT school, COUNT(*) AS cnt
+FROM T1
+GROUP BY school;
+
+-- 人数最多的学校（学校名＋人数）
+SELECT school, COUNT(*) AS cnt
+FROM T1
+GROUP BY school
+ORDER BY cnt DESC
+LIMIT 1;
+```
+
+**MySQL 允许在 ORDER BY 里用 SELECT 别名**
+
+- 标准 SQL 要求重写表达式（`ORDER BY COUNT(*) DESC`），MySQL 允许写别名，两种都能跑时按团队 SQL 规范选。
+- 同理 MySQL 的 `GROUP BY` 曾允许只出现在 SELECT 里的裸列（依赖 `ONLY_FULL_GROUP_BY` 被关闭），5.7.5 起默认开启该模式，非聚合列必须进 GROUP BY。
+
+**为什么不能用 WHERE 过滤分组**
+
+- `WHERE` 在分组前逐行过滤，拿不到聚合结果；对分组结果的约束只能在 `HAVING` 里写。
+- 想“只看人数大于 10 的学校”：`GROUP BY school HAVING cnt > 10`。
+
+**执行顺序对得上语义**
+
+- 逻辑顺序是 FROM → WHERE → GROUP BY → HAVING → SELECT → ORDER BY → LIMIT。
+- 所以 `LIMIT 1` 是在排完序之后才截断的，取到的是“聚合后”的最大组，不是任意一行。
+
+**只要学校名不要人数时的两种写法**
+
+- 排序截断：`ORDER BY COUNT(*) DESC LIMIT 1`（最常用）。
+- 子查询取最大值：`HAVING COUNT(*) = (SELECT COUNT(*) FROM T1 GROUP BY school ORDER BY COUNT(*) DESC LIMIT 1)`，能带出全部并列项。
+
+#### 深挖追问
+
+1. **并列最多时怎么把几个学校都返回？**（面经实际出现的延伸；[[面经/用友/一面/0002#Q09：SQL：统计每个学校面试总人数；再找出人数最多的学校|MJ090 · 用友 · 一面 · Q09]]）
+
+   MySQL 8.0+ 用窗口函数最清楚：
+
+   ```sql
+   SELECT school, cnt
+   FROM (SELECT school, COUNT(*) AS cnt,
+                RANK() OVER (ORDER BY COUNT(*) DESC) AS r
+         FROM T1 GROUP BY school) t
+   WHERE r = 1;
+   ```
+
+   `RANK()` 保留并列，`ROW_NUMBER()` 会强行只留一个——这两个函数的差异是常见追问点。
+
+2. **要 Top N（前三）怎么改？**（补充练习）
+
+   `LIMIT 3` 只管数量不管并列；要严格“前三名且并列都算”仍用 `RANK() <= 3`。数据量大时也可以先在子查询里聚合，再对外层排序截断，避免对明细行排序。
+
+3. **这题数据量大了会慢在哪，怎么优化？**（补充练习）
+
+   `GROUP BY school` 需要把该列所有值聚合，无索引时通常要建内部临时表（见 MYSQL-035）。优化方向是给 `school` 建索引让分组走有序扫描（loose index scan 在某些“只取 MAX／MIN 分组”的形态下可跳过大部分数据），或者预聚合成统计表。
+
+4. **想同时看每校占比怎么办？**（补充练习）
+
+   窗口函数一步到位：`COUNT(*) * 100.0 / SUM(COUNT(*)) OVER ()`——聚合函数套在窗口函数里，分母是全表总数，不用再写子查询。
+
+**面经来源**
+
+- [[面经/用友/一面/0002#Q09：SQL：统计每个学校面试总人数；再找出人数最多的学校|MJ090 · 用友 · 一面 · Q09]]
+
+
+**参考资料**（本次查证：2026-09-26；适用 MySQL 8.4）
+
+- [MySQL 8.4：Processing of GROUP BY / DISTINCT Aggregation](https://dev.mysql.com/doc/refman/8.4/en/group-by-handling.html)
+- [MySQL 8.4：Window Function Concepts（RANK／ROW_NUMBER）](https://dev.mysql.com/doc/refman/8.4/en/window-functions.html)
+- [MySQL 8.4：Server SQL Modes（ONLY_FULL_GROUP_BY）](https://dev.mysql.com/doc/refman/8.4/en/server-system-variables.html#sys_variable_sql_mode)
+
+**相关题目**
+
+[[#MYSQL-002：如何查询所有已记录科目成绩都大于 80 的人员？|MYSQL-002：分组与 HAVING]]、[[#MYSQL-039：MySQL 的 join 有哪几种，连接结果条数怎么推算？|MYSQL-039：join 种类与条数推算]]、[[#MYSQL-035：MySQL 什么时候会使用内部临时表？|MYSQL-035：内部临时表]]
