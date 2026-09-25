@@ -78,6 +78,7 @@
 
 - HashMap 和 ConcurrentHashMap 有什么区别？
 - ConcurrentHashMap 的实现原理是什么？
+- ConcurrentHashMap 在项目中怎么用的？key 和 value 存的什么？
 
 #### 面试回答
 
@@ -114,6 +115,7 @@
 
 - [[面经/百度/一面/0003#Q16：HashMap 和 ConcurrentHashMap 有什么区别？|MJ006 · 百度 · 一面 · Q16]]
 - [[面经/字节/一面/0001#Q19：ConcurrentHashMap 的实现原理是什么？|MJ011 · 字节 · 一面 · Q19]]
+- [[面经/收钱吧/一面/0001#Q10：ConcurrentHashMap 在项目中如何使用？key 和 value 存什么？|MJ068 · 收钱吧 · 一面 · Q10]]
 
 **参考资料**（查证：2026-09-13；适用版本见正文）
 
