@@ -761,6 +761,7 @@
 - 怎么做的任务拆分，为什么拆分，效果如何提升？
 
 - 选一个案例，详细讲讲 Agent 工作的完整过程。
+- 手写一个 Agent loop 的过程（现场伪代码）。
 
 #### 面试回答
 
@@ -880,7 +881,29 @@ ReAct 这部分这样说：
 
    效果看三个指标：端到端成功率、各子任务通过率、失败可归因率。
 
+7. **现场手写 Agent loop，要写清哪几件事？**（面经实际出现；[[面经/字节/二面/0004#Q09：手撕：手写一个 Agent loop 的过程|MJ092 · 字节 · 二面 · Q09]]）
+
+   评分点不是伪代码多漂亮，而是五件事齐不齐：循环与预算、模型决策出口、执行层校验、观察回写、失败出口。
+
+   ```text
+   messages = [system, task]
+   for step in 1..max_steps:
+       resp = llm(messages, tools)                     # 模型决策
+       if resp.is_final and verify(resp.answer):
+           return resp.answer                          # final 还要过目标验证
+       for call in resp.tool_calls:
+           check_args_and_permission(call)             # 参数与权限在执行层
+           result = execute(call); record(call, result)
+           messages.append(assistant_turn, observation(result))  # 观察回写
+       if no_progress() or budget_exceeded():
+           return fail_or_escalate()                   # 预算耗尽≠成功
+   return fail_timeout()
+   ```
+
+   - 边写边说的三句关键：模型“生成调用”不等于“已执行”；退出要同时满足 final 与目标验证；防失控靠重复无进展检测＋步数／耗时／费用三类预算。
+
 **面经来源**
+- [[面经/字节/二面/0004#Q09：手撕：手写一个 Agent loop 的过程|MJ092 · 字节 · 二面 · Q09]]
 - [[面经/美团/一面/0002#Q07：Agent 项目介绍一下，你是怎么设计这个项目的，Agent 的定位是什么？|MJ032 · 美团 · 一面 · Q07]]
 - [[面经/字节/一面/0005#Q04：根因分析时如果发现置信度不够，后续是怎么去拿更多上下文的？|MJ015 · 字节 · 一面 · Q04]]
 - [[面经/字节/轮次未知/0001#Q16：ReAct 是啥，怎么实现的？|MJ021 · 字节 · 轮次未知 · Q16]]
