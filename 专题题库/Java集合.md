@@ -96,7 +96,9 @@
 
 #### 面试回答
 
-- HashMap：不做同步，多线程直接共用会丢数据；允许一个 null key、多个 null value；迭代时结构被改动会抛 ConcurrentModificationException。
+- HashMap：不做同步，多线程直接共用会丢数据。
+  - 允许一个 null key、多个 null value。
+  - 迭代时结构被改动会抛 ConcurrentModificationException。
 - ConcurrentHashMap：线程安全，key 和 value 都不许为 null；单次调用是安全的，但这不代表“先 get 再 put”这种多步逻辑也自动原子 —— 那种场景要用 putIfAbsent 或 compute 系列。
 - 选型：单线程、或者外层已经统一加锁，用 HashMap 就够；多个线程共用一份可变映射，用 ConcurrentHashMap。
 
@@ -123,7 +125,11 @@
 
 1. **用 ConcurrentHashMap 后，get 再 put 就安全了吗？**（补充练习）
 
-   不安全。每次调用各自线程安全，但组合起来仍会丢更新：get 返回 null 到 put 之间，别的线程可能已经写了同一个 key，你的写就把对方覆盖了。改用 putIfAbsent／computeIfAbsent／merge／compute 这类原子的条件操作。注意它们只保证“这一个 key”上的操作原子，不提供跨 key 的事务。
+   不安全：每次调用各自线程安全，但组合起来仍会丢更新。
+
+   - get 返回 null 到 put 之间，别的线程可能已经写了同一个 key，你的写就把对方覆盖了。
+   - 改用 putIfAbsent／computeIfAbsent／merge／compute 这类原子的条件操作。
+   - 注意它们只保证“这一个 key”上的操作原子，不提供跨 key 的事务。
 
 **面经来源**
 
@@ -158,7 +164,10 @@
 - 定位：key 的 hashCode 高 16 位异或低 16 位做扰动，再用 `(n-1) & hash` 取桶下标；容量恒为 2 的幂。
 - 冲突处理：同桶挂链表；链表长度到 8 且表容量到 64 才树化，红黑树退化到 6 变回链表。
 - 扩容：元素数超过容量×负载因子（默认 0.75）就翻倍，迁移细节见 JAVA-COL-001。
-- 特性：允许一个 null key；迭代无序；非线程安全，并发用 ConcurrentHashMap（见 JAVA-COL-002）。
+- 特性：
+  - 允许一个 null key。
+  - 迭代无序。
+  - 非线程安全，并发用 ConcurrentHashMap（见 JAVA-COL-002）。
 
 #### 技术细节
 
@@ -236,8 +245,13 @@
 
 一句话：HashSet 是“哈希换 O(1) 且无序”，TreeSet 是“红黑树换有序和 O(log n)”。
 
-- HashSet：底层就是 HashMap——元素当 key，value 是共享哑值；add／remove／contains 平均 O(1)，冲突成链退化 O(n)、树化后 O(log n)；遍历顺序与插入无关；允许一个 null 元素。
-- TreeSet：底层 TreeMap，元素当 key，红黑树按 Comparable／Comparator 排序；add／remove／contains 稳定 O(log n)，还白送有序遍历与范围操作（first／higher／subSet）；不接受 null（比较即 NPE），去重依据是 `compareTo==0` 而非 equals。
+- HashSet：底层就是 HashMap——元素当 key，value 是共享哑值。
+  - add／remove／contains 平均 O(1)，冲突成链退化 O(n)、树化后 O(log n)。
+  - 遍历顺序与插入无关。
+  - 允许一个 null 元素。
+- TreeSet：底层 TreeMap，元素当 key，红黑树按 Comparable／Comparator 排序。
+  - add／remove／contains 稳定 O(log n)，还白送有序遍历与范围操作（first／higher／subSet）。
+  - 不接受 null（比较即 NPE），去重依据是 `compareTo==0` 而非 equals。
 - 选型：只要去重与判存在 → HashSet；要有序遍历、极值、区间查询 → TreeSet，为 log n 与每元素树节点开销付费。
 - 中间档补一句：LinkedHashSet＝哈希＋双向链表，O(1) 且保插入序——“要不要序、要哪种序”才是第一问。
 
@@ -441,9 +455,14 @@
 
 结论：线程安全的集合按年代分三档，都叫安全，实现与代价完全不同。
 
-- 三档：JDK 1.0 的全表锁遗留类（Vector／Hashtable／Stack）；JUC 的细粒度并发类（ConcurrentHashMap、CopyOnWrite 系、BlockingQueue）；“不改就是安全”的不可变集合。
+- 三档：
+  - JDK 1.0 的全表锁遗留类（Vector／Hashtable／Stack）。
+  - JUC 的细粒度并发类（ConcurrentHashMap、CopyOnWrite 系、BlockingQueue）。
+  - “不改就是安全”的不可变集合。
 
-- 遗留类：`Vector`、`Hashtable`、`Stack` 方法级 `synchronized`，一次锁整张表；复合操作（先 get 再 add）仍不原子；新代码不用。
+- 遗留类：`Vector`、`Hashtable`、`Stack` 方法级 `synchronized`，一次锁整张表。
+  - 复合操作（先 get 再 add）仍不原子。
+  - 新代码不用。
 - 并发优化类：`ConcurrentHashMap`（CAS＋桶头 synchronized，size 分片计数）、`CopyOnWriteArrayList`／`CopyOnWriteArraySet`（写时复制，读零开销）、`BlockingQueue` 家族（`ArrayBlockingQueue`／`LinkedBlockingQueue`／`PriorityBlockingQueue`，锁＋Condition 实现阻塞语义）、`ConcurrentSkipListMap`（跳表做有序并发）。
 - 包装类：`Collections.synchronizedList/Map` 只是把每个方法加一把互斥锁——单方法安全，遍历与复合操作仍要调用方自己锁该包装对象。
 - 不可变类：`List.of`／`Map.of`（JDK 9＋）创建后不能改，安全来自“没有写”；`Collections.unmodifiableList` 是只读视图，底层被改则视图跟着变——两者不同，别说混。
@@ -478,7 +497,11 @@
 
 2. **BlockingQueue 的 offer／put／take 在满和空时各是什么行为？**（补充练习）
 
-   `put`／`take` 阻塞等待；`offer(e, timeout, unit)` 带超时；`offer`／`poll` 立即返回布尔。有界队列要显式定满时策略（阻塞、丢弃还是拒绝），这在线程池配置里就是 workQueue 行为（见 JUC-002）。
+   - `put`／`take` 阻塞等待。
+   - `offer(e, timeout, unit)` 带超时。
+   - `offer`／`poll` 立即返回布尔。
+
+   有界队列要显式定满时策略（阻塞、丢弃还是拒绝），这在线程池配置里就是 workQueue 行为（见 JUC-002）。
 
 **面经来源**
 

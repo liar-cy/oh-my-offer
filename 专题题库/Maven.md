@@ -55,7 +55,9 @@
 
 2. **CI 里常用哪个？**（补充练习）
 
-   组件库：`mvn deploy`（或 release 插件）；应用：`mvn verify`／`package` 出产物交给镜像构建；“CI 里长期 `-DskipTests`”是把质量门拆了，见 [[#MAVEN-002：-DskipTests 和 -Dmaven.test.skip=true 有什么区别？|MAVEN-002]]。
+   - 组件库：`mvn deploy`（或 release 插件）。
+   - 应用：`mvn verify`／`package` 出产物交给镜像构建。
+   - “CI 里长期 `-DskipTests`”是把质量门拆了，见 [[#MAVEN-002：-DskipTests 和 -Dmaven.test.skip=true 有什么区别？|MAVEN-002]]。
 
 **面经来源**
 

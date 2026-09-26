@@ -72,7 +72,12 @@
 
 3. **自定义一个组件集成到 Spring Boot，要做哪些操作？**（面经实际出现；[[面经/小米/二面/0001#Q07：自定义一个组件集成到 SpringBoot 中，要做哪些操作？|MJ079 · 小米 · 二面 · Q07]]）
 
-   反向走一遍自动装配链条即可：写 `@AutoConfiguration` 配置类，把组件注册成 `@Bean`；用 `@ConfigurationProperties` 暴露 `xxx.*` 配置项；加 `@ConditionalOnClass`／`@ConditionalOnMissingBean` 让使用者能覆盖；在 `META-INF/spring/org.springframework.boot.autoconfigure.AutoConfiguration.imports` 登记配置类全限定名（2.7 前写 `spring.factories`）。
+   反向走一遍自动装配链条即可：
+
+   - 写 `@AutoConfiguration` 配置类，把组件注册成 `@Bean`。
+   - 用 `@ConfigurationProperties` 暴露 `xxx.*` 配置项。
+   - 加 `@ConditionalOnClass`／`@ConditionalOnMissingBean` 让使用者能覆盖。
+   - 在 `META-INF/spring/org.springframework.boot.autoconfigure.AutoConfiguration.imports` 登记配置类全限定名（2.7 前写 `spring.factories`）。
 
    发布形态按官方惯例拆两个构件：`xxx-spring-boot-autoconfigure` 放装配代码，`xxx-spring-boot-starter` 只聚依赖不含代码——使用者加一个 starter 依赖就能用。
 
@@ -146,7 +151,10 @@ IoC（Inversion of Control，控制反转）是把对象创建和依赖管理交
    两条解析入口、一条创建流水线：
 
    - XML：`XmlBeanDefinitionReader` 解析 `<bean>` 元素，把 class、构造参数、属性值、init／destroy 方法记成 `BeanDefinition` 注册进容器。
-   - 注解：`ClassPathBeanDefinitionScanner` 扫描 `@Component`／`@Service` 派生注解生成定义；`@Configuration`＋`@Bean` 方法把返回类型注册为定义；`@Autowired` 注入本身由 `AutowiredAnnotationBeanPostProcessor` 在属性填充阶段反射完成。
+   - 注解：
+     - `ClassPathBeanDefinitionScanner` 扫描 `@Component`／`@Service` 派生注解生成定义。
+     - `@Configuration`＋`@Bean` 方法把返回类型注册为定义。
+     - `@Autowired` 注入本身由 `AutowiredAnnotationBeanPostProcessor` 在属性填充阶段反射完成。
    - 汇合：两者最终都在 `BeanDefinitionRegistry` 里同质——`refresh()` 预实例化单例时统一走“实例化→填充→初始化→代理”流程（见 SPRING-011），所以行为一致、可混用。
    - 反射点：真正“造对象”的是 `BeanUtils.instantiateClass`（构造器反射）或工厂方法调用——所谓 Spring 创建对象，本质是容器替你反射 new 并管住后续。
 
@@ -239,7 +247,10 @@ Spring AOP 的做法是在目标对象外面套一层代理，把事务、日志
    - 日志框架层：logback／log4j2 的 pattern 自动带类名、行号、线程，`MDC` 放 traceId 让每行日志可串链路（Filter 里放、异步线程用 TaskDecorator 传递）——业务只打日志不拼格式。
    - 字节码层：`-javaagent` 探针（SkyWalking／Pinpoint，或自写 ByteBuddy transformer）在方法进出时增强——真正零业务代码，代价是运维接入与性能评估。
    - 结构层：Spring 事件把“记录动作”从主流程解耦、装饰器包一层计时——仍要显式发事件或包对象，侵入介于中间。
-   - 选型句：接口审计日志用拦截器就够；全链路方法级观测上 APM 探针；AOP 适合“少量关键方法＋需要业务上下文”的日志。
+   - 选型句：
+     - 接口审计日志用拦截器就够。
+     - 全链路方法级观测上 APM 探针。
+     - AOP 适合“少量关键方法＋需要业务上下文”的日志。
 
 **面经来源**
 
@@ -626,7 +637,10 @@ Spring 的懒加载，就是把 Bean 的创建从“容器启动时”推迟到�
 1. **`@Component` 和 `@Bean` 有什么区别，什么时候必须用 `@Bean`？**（补充练习）
 
    - `@Component`：写在类上、由扫描发现，怎么构造、依赖给谁都由容器推断。
-   - `@Bean`：写在配置类的方法上。三类情况必须用它：第三方类改不了源码、加不了注解；需要自己传构造参数或写初始化逻辑；同一类型要多实例／按条件创建。
+   - `@Bean`：写在配置类的方法上。三类情况必须用它：
+     - 第三方类改不了源码、加不了注解。
+     - 需要自己传构造参数或写初始化逻辑。
+     - 同一类型要多实例／按条件创建。
 
 2. **`@Autowired` 能用在哪些位置，哪种推荐？**（补充练习）
 
@@ -755,7 +769,9 @@ Spring 的懒加载，就是把 Bean 的创建从“容器启动时”推迟到�
 
 - 原型（prototype）Bean：容器只负责创建与装配，不执行销毁回调，客户端要自己管生命周期。
 - 代理可能在初始化之后才被替换，而注入给其他 Bean 的应是最终对象 —— 这正是三级缓存要提前暴露“可能已经代理过”的引用（`getEarlyBeanReference`）的原因。
-- 定位思路：实例化失败多在构造与依赖解析阶段；`BeanCurrentlyInCreationException` 对应循环依赖；字段为 null 通常是这个对象被 `new` 出来而没交给容器。
+- 定位思路：实例化失败多在构造与依赖解析阶段。
+  - `BeanCurrentlyInCreationException` 对应循环依赖。
+  - 字段为 null 通常是这个对象被 `new` 出来而没交给容器。
 
 #### 技术细节
 
@@ -866,7 +882,16 @@ Spring 的懒加载，就是把 Bean 的创建从“容器启动时”推迟到�
 
 2. **Boot 应用启动时容器里发生了什么？**（面经实际出现；[[面经/虾皮/一面/0002#Q13：谈谈 SpringBoot 的启动过程。|MJ048 · 虾皮 · 一面 · Q13]]）
 
-   `SpringApplication.run` 主干：推断应用类型与加载初始化器／监听器 → 准备 Environment（配置文件与 profile）→ 创建并 refresh 容器（BeanFactoryPostProcessor 含自动配置评估、注册 BeanPostProcessor、实例化单例）→ 内嵌容器随刷新启动监听端口 → Runner 回调 → 发布 `ApplicationReadyEvent`。全程事件贯穿，失败路径发 Failed 事件；单例实例化细节见 SPRING-011，逐条展开版另见 [[面经/虾皮/一面/0002#Q13：谈谈 SpringBoot 的启动过程。|MJ048 一面 Q13]] 的面试回答。
+   `SpringApplication.run` 的主干按顺序走：
+
+   1. 推断应用类型与加载初始化器／监听器。
+   2. 准备 Environment（配置文件与 profile）。
+   3. 创建并 refresh 容器：BeanFactoryPostProcessor 含自动配置评估、注册 BeanPostProcessor、实例化单例。
+   4. 内嵌容器随刷新启动监听端口。
+   5. Runner 回调。
+   6. 发布 `ApplicationReadyEvent`。
+
+   全程事件贯穿，失败路径发 Failed 事件。单例实例化细节见 SPRING-011，逐条展开版另见 [[面经/虾皮/一面/0002#Q13：谈谈 SpringBoot 的启动过程。|MJ048 一面 Q13]] 的面试回答。
 
 **面经来源**
 
@@ -1041,7 +1066,9 @@ Spring 的懒加载，就是把 Bean 的创建从“容器启动时”推迟到�
 
 **最小可运行清单**
 
-- 依赖 `spring-tx`＋数据源；配置类上 `@EnableTransactionManagement`；需要时 `proxyTargetClass=true` 切 CGLIB。
+- 依赖 `spring-tx`＋数据源。
+- 配置类上 `@EnableTransactionManagement`。
+- 需要时 `proxyTargetClass=true` 切 CGLIB。
 - 生效前提是调用经过代理：同类自调用、`final`／`private` 方法、异常被 catch 吞掉都会“看起来加了没生效”（SPRING-004 全清单）。
 
 **Test 类这种场景怎么判**
@@ -1098,8 +1125,16 @@ Spring 的懒加载，就是把 Bean 的创建从“容器启动时”推迟到�
 
 核心类与注解速报：
 
-- 原生线：`@EnableWebSocket` 开启；实现 `WebSocketHandler`（常用继承 `TextWebSocketHandler`）写 `afterConnectionEstablished`／`handleTextMessage`；`HandshakeInterceptor` 在 HTTP 升级前鉴权；`WebSocketConfigurer#registerWebSocketHandlers` 注册端点路径与 `setAllowedOrigins`。
-- STOMP 线：`@EnableWebSocketMessageBroker`；`configureMessageBroker` 设应用前缀与代理前缀；`@Controller`＋`@MessageMapping` 收、`@SendTo`／`SimpMessagingTemplate#convertAndSendToUser` 发；`@SubscribeMapping` 订阅即答。
+- 原生线：
+  - `@EnableWebSocket` 开启。
+  - 实现 `WebSocketHandler`（常用继承 `TextWebSocketHandler`）写 `afterConnectionEstablished`／`handleTextMessage`。
+  - `HandshakeInterceptor` 在 HTTP 升级前鉴权。
+  - `WebSocketConfigurer#registerWebSocketHandlers` 注册端点路径与 `setAllowedOrigins`。
+- STOMP 线：
+  - `@EnableWebSocketMessageBroker`。
+  - `configureMessageBroker` 设应用前缀与代理前缀。
+  - `@Controller`＋`@MessageMapping` 收、`@SendTo`／`SimpMessagingTemplate#convertAndSendToUser` 发。
+  - `@SubscribeMapping` 订阅即答。
 - 会话管理：`WebSocketSession` 非线程安全，发送要加锁；userId→session 映射自己维护（多实例要放 Redis 等共享存储并用广播转发）。
 
 #### 技术细节

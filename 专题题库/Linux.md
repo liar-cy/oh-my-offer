@@ -194,7 +194,9 @@ awk 'NF >= 4 {print $4}' input.txt | sort | uniq -c | sort -k1,1nr -k2,2 | head 
 **命令细节**
 
 - 上述命令并列次数时按 ID 字符串排序；必要时统一设置 `LC_ALL=C` 确保排序可复现。
-- 有表头时加 `NR > 1` 条件；Tab 分隔可用 `-F '\t'`；含引号、嵌入逗号的 CSV 需使用 CSV 解析器。
+- 有表头时加 `NR > 1` 条件。
+- Tab 分隔可用 `-F '\t'`。
+- 含引号、嵌入逗号的 CSV 需使用 CSV 解析器。
 - uniq 只合并相邻重复行，因此前面的 sort 必不可少。
 - 只有不足十个不同 ID 时输出全部。
 
@@ -230,9 +232,17 @@ awk 'NF >= 4 {print $4}' input.txt | sort | uniq -c | sort -k1,1nr -k2,2 | head 
 
 结论：按“系统层→进程层→JVM 层→依赖层”四层收敛，每一层都用命令拿证据；先止损（回滚／扩容／限流）再深挖根因。
 
-- 系统层：`uptime` 看 1／5／15 分钟负载趋势；`vmstat 1` 分 CPU（us／sy／wa）与运行队列；`iostat -x 1` 看磁盘 util／await；`free -h`＋`sar -r` 看内存与换页；`ss -s`、`mtr` 看网络。
+- 系统层：
+  - `uptime` 看 1／5／15 分钟负载趋势。
+  - `vmstat 1` 分 CPU（us／sy／wa）与运行队列。
+  - `iostat -x 1` 看磁盘 util／await。
+  - `free -h`＋`sar -r` 看内存与换页。
+  - `ss -s`、`mtr` 看网络。
 - 进程层：`top` 认进程，`top -Hp <pid>` 抓高 CPU 线程，线程号转 16 进制拿去 `jstack` 里对栈。
-- JVM 层：GC 嫌疑先 `jstat -gcutil <pid> 1000` 看 FGC 次数与耗时；热点用 Arthas `thread -n 3`／async-profiler 火焰图；内存看 `jmap -histo` 与 dump 分析。
+- JVM 层：
+  - GC 嫌疑先 `jstat -gcutil <pid> 1000` 看 FGC 次数与耗时。
+  - 热点用 Arthas `thread -n 3`／async-profiler 火焰图。
+  - 内存看 `jmap -histo` 与 dump 分析。
 - 依赖层：慢 SQL（`SHOW PROCESSLIST`＋EXPLAIN）、下游 RT、连接池排队、缓存命中率——同时必问一句“最近有没有上线／改配置”，变慢大多对应一次变更。
 
 #### 技术细节
